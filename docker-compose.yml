@@ -1,0 +1,11 @@
+version: '3'
+
+services:
+  yfinance:
+    build: .
+    volumes:
+      - .:/app
+    entrypoint: python
+    command: yfinance_cli.py --help
+    # 以下のコマンドをコメントアウトから外して使用することもできます
+    # command: yfinance_cli.py AAPL --price --info 
