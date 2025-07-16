@@ -2,6 +2,12 @@
 
 YFinanceを使用して株式データを取得・分析するための環境です。
 
+## 概要
+
+このプロジェクトには以下の機能があります：
+1. **CLIツール** - コマンドラインから株式データを取得
+2. **AWS API** - Lambda + API Gateway による REST API
+
 ## セットアップ
 
 ### 1. 仮想環境の有効化
@@ -14,7 +20,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 使用方法
+## CLIツールの使用方法
 
 ### サンプルプログラムの実行
 ```bash
@@ -49,93 +55,146 @@ python yfinance_cli.py AAPL --price --info --history
 python yfinance_cli.py AAPL --price --info --json
 ```
 
-### 銘柄検索ツールの使用
+## AWS API の構築・デプロイ
+
+### 前提条件
+
+AWS SAM CLI と AWS CLI が必要です：
 
 ```bash
-# 米国市場で「apple」を検索
-python yfinance_search.py apple
+# AWS CLI のインストール
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
 
-# 日本市場で検索
-python yfinance_search.py toyota --region JP
+# AWS SAM CLI のインストール
+pip install aws-sam-cli
 
-# 検索結果の件数を指定
-python yfinance_search.py bank --limit 20
-
-# JSON形式で出力
-python yfinance_search.py apple --json
+# AWS認証情報の設定
+aws configure
 ```
 
-## Docker を使った実行
+### ローカルテスト
 
-Docker を使用して環境を構築せずに実行することもできます。
-
-### Docker ビルド
-```bash
-docker build -t yfinance .
-```
-
-### Docker での実行
-```bash
-# ヘルプを表示
-docker run --rm yfinance yfinance_cli.py --help
-
-# アップルの株価を表示
-docker run --rm yfinance yfinance_cli.py AAPL --price
-
-# 詳細情報を表示
-docker run --rm yfinance yfinance_cli.py AAPL --info
-
-# 株価履歴を表示
-docker run --rm yfinance yfinance_cli.py AAPL --history --period 1y
-
-# JSON形式で出力
-docker run --rm yfinance yfinance_cli.py AAPL --price --info --json
-
-# 銘柄検索
-docker run --rm yfinance yfinance_search.py apple
-
-# サンプルプログラムを実行
-docker run --rm yfinance yfinance_sample.py
-```
-
-### Docker Compose での実行
-```bash
-# デフォルト（ヘルプ表示）
-docker-compose up --build
-
-# コマンドを指定して実行
-docker-compose run --rm yfinance yfinance_cli.py AAPL --price --info
-```
-
-### 便利なシェルスクリプト
-
-より簡単に実行するためのシェルスクリプトが用意されています：
+API機能をローカルでテストできます：
 
 ```bash
-# 使い方を表示
-./yfinance.sh help
+# 基本的なAPIテスト
+python test_api.py
 
-# 株価を表示
-./yfinance.sh price AAPL
+# 特定の機能のみテスト
+python test_api.py price
+python test_api.py info
+python test_api.py history
+python test_api.py lambda
 
-# 詳細情報を表示
-./yfinance.sh info AAPL
-
-# 株価履歴を表示
-./yfinance.sh history AAPL --period 1y
-
-# 全情報を表示
-./yfinance.sh all AAPL
-
-# JSON形式で出力
-./yfinance.sh all AAPL --json
-./yfinance.sh info AAPL --json
-
-# 銘柄検索
-./yfinance.sh search apple
-./yfinance.sh search toyota --region JP
-./yfinance.sh search apple --json
+# ローカルHTTPサーバーでテスト
+python local_test.py
+# ブラウザで http://localhost:8000 にアクセス
 ```
+
+### AWS へのデプロイ
+
+```bash
+# デプロイ実行
+./deploy.sh
+```
+
+デプロイが成功すると、API Gateway のURLが表示されます：
+
+```
+API Gateway URL: https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/
+
+=== API エンドポイント ===
+株価取得: GET https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/price/{ticker}
+詳細情報: GET https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/info/{ticker}
+履歴データ: GET https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/history/{ticker}?period=1mo
+```
+
+### API の使用例
+
+```bash
+# 株価取得
+curl "https://your-api-url/prod/price/AAPL"
+
+# 詳細情報取得
+curl "https://your-api-url/prod/info/MSFT"
+
+# 履歴データ取得
+curl "https://your-api-url/prod/history/GOOGL?period=1y"
+```
+
+### リソースの削除
+
+```bash
+# AWS リソースを削除
+./cleanup.sh
+```
+
+## API仕様
+
+詳細なAPI仕様については `api_documentation.md` を参照してください。
+
+### エンドポイント一覧
+
+- `GET /price/{ticker}` - 現在の株価取得
+- `GET /info/{ticker}` - 株式の詳細情報取得
+- `GET /history/{ticker}?period={period}` - 株価履歴取得
+
+### 対応するティッカーシンボル
+
+- **アメリカ株**: AAPL, MSFT, GOOGL, TSLA, NVDA など
+- **日本株**: 7203.T (トヨタ), 9984.T (ソフトバンク), 6501.T (日立) など
+- **その他の世界市場**: 対応する取引所の形式に従う
+
+## プロジェクト構成
+
+```
+.
+├── yfinance_cli.py          # CLIツール（元の実装）
+├── yfinance_sample.py       # サンプルプログラム
+├── lambda_function.py       # AWS Lambda関数
+├── template.yaml            # AWS SAM テンプレート
+├── deploy.sh               # デプロイスクリプト
+├── cleanup.sh              # リソース削除スクリプト
+├── test_api.py             # APIテスト用スクリプト
+├── local_test.py           # ローカルHTTPサーバー
+├── api_documentation.md    # API詳細ドキュメント
+├── requirements.txt        # Python依存関係
+└── README.md              # このファイル
+```
+
+## トラブルシューティング
+
+### デプロイエラー
+
+1. **AWS認証エラー**: `aws configure` で認証情報を設定
+2. **権限エラー**: IAMユーザーに適切な権限を付与
+3. **リージョンエラー**: `AWS_DEFAULT_REGION` 環境変数を設定
+
+### API エラー
+
+1. **CORS エラー**: すでに設定済みですが、ブラウザの開発者ツールで確認
+2. **データ取得エラー**: Yahoo Finance の制限や無効なティッカーシンボル
+3. **タイムアウト**: Lambda の実行時間制限（30秒）を確認
+
+## 開発者向け情報
+
+### コード構成
+
+- **CLI機能**: `yfinance_cli.py` - 元のCLI実装
+- **API機能**: `lambda_function.py` - AWS Lambda用の実装
+- **共通ロジック**: 株価取得ロジックは両方で共有
+
+### カスタマイズ
+
+- **タイムアウト調整**: `template.yaml` の `Timeout` 設定
+- **メモリ調整**: `template.yaml` の `MemorySize` 設定
+- **CORS設定**: `lambda_function.py` と `template.yaml` の設定
+
+## ライセンス
+
+このプロジェクトはオープンソースです。
 
 ## 出力項目の説明
 
