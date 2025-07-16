@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'YFinance API - 株式データ取得API'
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.9
+    Environment:
+      Variables:
+        PYTHONPATH: /opt/python
+
+Resources:
+  YFinanceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+
+  YFinanceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.9
+      Timeout: 30
+      MemorySize: 512
+      Events:
+        GetPrice:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /price/{ticker}
+            Method: get
+        GetInfo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /info/{ticker}
+            Method: get
+        GetHistory:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /history/{ticker}
+            Method: get
+        OptionsPrice:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /price/{ticker}
+            Method: options
+        OptionsInfo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /info/{ticker}
+            Method: options
+        OptionsHistory:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /history/{ticker}
+            Method: options
+
+Outputs:
+  YFinanceApiUrl:
+    Description: 'API Gateway endpoint URL'
+    Value: !Sub 'https://${YFinanceApi}.execute-api.${AWS::Region}.amazonaws.com/prod/'
+    Export:
+      Name: YFinanceApiUrl
+
+  YFinanceFunctionArn:
+    Description: 'YFinance Lambda Function ARN'
+    Value: !GetAtt YFinanceFunction.Arn
+    Export:
+      Name: YFinanceFunctionArn
