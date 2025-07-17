@@ -82,6 +82,40 @@ API_URL=$(aws cloudformation describe-stacks \
     --output text)
 
 echo "API Gateway URL: $API_URL"
+
+# Lambda関数の環境変数を更新
+echo "Lambda関数の環境変数を更新しています..."
+FUNCTION_NAME=$(aws cloudformation describe-stacks \
+    --stack-name $STACK_NAME \
+    --region $REGION \
+    --query "Stacks[0].Outputs[?OutputKey=='YFinanceFunctionName'].OutputValue" \
+    --output text)
+
+if [ ! -z "$FUNCTION_NAME" ] && [ "$FUNCTION_NAME" != "None" ]; then
+    echo "Lambda関数名: $FUNCTION_NAME"
+    
+    # 現在の環境変数を取得
+    CURRENT_ENV=$(aws lambda get-function-configuration --function-name $FUNCTION_NAME --region $REGION --query 'Environment.Variables' --output json 2>/dev/null || echo '{}')
+    
+    # 新しい環境変数を設定
+    NEW_ENV=$(echo $CURRENT_ENV | jq --arg url "$API_URL" '. + {"API_GATEWAY_URL": $url}')
+    
+    echo "設定する環境変数: $NEW_ENV"
+    
+    # Lambda関数を更新
+    aws lambda update-function-configuration \
+        --function-name $FUNCTION_NAME \
+        --region $REGION \
+        --environment Variables="$NEW_ENV"
+    
+    echo "✅ 環境変数の更新が完了しました。"
+    echo "   API_GATEWAY_URL: $API_URL"
+else
+    echo "❌ 警告: Lambda関数名を取得できませんでした。"
+    echo "   手動で環境変数を設定してください:"
+    echo "   aws lambda update-function-configuration --function-name <FUNCTION_NAME> --environment Variables='{\"API_GATEWAY_URL\":\"$API_URL\"}'"
+fi
+
 echo ""
 echo "=== 全APIエンドポイント テスト用URL ==="
 echo ""

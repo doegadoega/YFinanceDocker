@@ -26,7 +26,18 @@ Resources:
       PackageType: Image
       MemorySize: 1024
       Timeout: 30
+      Environment:
+        Variables:
+          # 環境変数は後で動的に設定されるため、ここでは空にする
+          API_GATEWAY_URL: ""
       Events:
+        # ベースURL - Swagger UI表示
+        GetSwaggerUI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /
+            Method: get
         SearchStocks:
           Type: Api
           Properties:
@@ -153,3 +164,9 @@ Outputs:
     Value: !GetAtt YFinanceFunction.Arn
     Export:
       Name: YFinanceFunctionArn
+
+  YFinanceFunctionName:
+    Description: 'YFinance Lambda Function Name'
+    Value: !Ref YFinanceFunction
+    Export:
+      Name: YFinanceFunctionName

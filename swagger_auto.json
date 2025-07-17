@@ -10,8 +10,14 @@
   },
   "servers": [
     {
-      "url": "https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod/",
-      "description": "Production server"
+      "url": "{API_BASE_URL}",
+      "description": "Production server",
+      "variables": {
+        "API_BASE_URL": {
+          "default": "https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod/",
+          "description": "API GatewayのベースURL"
+        }
+      }
     }
   ],
   "paths": {
@@ -558,7 +564,7 @@
           "timestamp": {
             "type": "string",
             "format": "date-time",
-            "example": "2025-07-17T14:28:34.224689Z"
+            "example": "2025-07-17T15:24:51.042452Z"
           }
         }
       }
