@@ -1,11 +1,27 @@
 version: '3'
 
 services:
-  yfinance:
-    build: .
+  # ローカルテスト用サービス
+  yfinance-local:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    environment:
+      - EXECUTION_MODE=DOCKER
+      - YFINANCE_API_URL=https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod
     volumes:
       - .:/app
-    entrypoint: python
-    command: yfinance_cli.py --help
     # 以下のコマンドをコメントアウトから外して使用することもできます
-    # command: yfinance_cli.py AAPL --price --info 
+    # command: python yfinance_cli.py --help
+    # command: python yfinance_cli.py AAPL --price --info
+    # command: python yfinance_search.py Apple
+    # command: python local_test.py
+
+  # Lambda用サービス（デプロイ用）
+  yfinance-lambda:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - EXECUTION_MODE=LAMBDA
+      - YFINANCE_API_URL=https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod 

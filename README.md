@@ -1,956 +1,282 @@
-# YFinance 環境
+# YFinance Docker プロジェクト
 
-YFinanceを使用して株式データを取得・分析するための環境です。
+YFinanceを使用した株式データ取得システムを、Lambda、Docker、ローカル実行の3つのパターンで統一された出力形式で提供します。
 
-## 概要
+## 🎯 プロジェクトの特徴
 
-このプロジェクトには以下の機能があります：
-1. **CLIツール** - コマンドラインから株式データを取得
-2. **AWS API** - Lambda + API Gateway による REST API
-3. **Swagger自動生成** - コード解析によるAPI仕様書の自動生成
+### ✅ 完全統一された出力形式
+- **Lambda関数を直接使用**することで、3つの実行環境で完全に同じ出力
+- 同じ関数から呼び出し、同じデータ構造、同じエラーハンドリング
+- 重複コードの排除により保守性が大幅向上
 
-## セットアップ
+### 📊 包括的な金融データ（17種類）
+- 基本情報（企業名、業界、セクター）
+- 価格情報（現在価格、変化率、通貨）
+- ESG情報（環境・社会・ガバナンススコア）
+- 財務諸表（損益計算書、貸借対照表、キャッシュフロー）
+- 株主情報（大株主、機関投資家）
+- アナリスト情報（推奨、目標価格）
+- ニュース情報
+- 配当情報
+- 株価履歴
+- ISIN情報
+- 推奨履歴
+- その他詳細データ
 
-### 1. 仮想環境の有効化
-```bash
-source venv/bin/activate
+### 🔍 高速な株式検索機能
+- 複数地域対応（US, JP, DE, CA, AU, GB, FR, IT, ES, KR, IN, HK, SG）
+- リアルタイム価格情報付き
+- ファジー検索対応
+
+## 🏗️ アーキテクチャ
+
+### 統一方式：Lambda関数直接使用
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   yfinance_     │    │   local_test.py │    │   Docker        │
+│   sample.py     │    │   (HTTP Server) │    │   Container     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 │
+                    ┌─────────────────┐
+                    │ lambda_function │
+                    │      .py        │
+                    │  (共通関数群)    │
+                    └─────────────────┘
+                                 │
+                    ┌─────────────────┐
+                    │   AWS Lambda    │
+                    │   (本番環境)     │
+                    └─────────────────┘
 ```
 
-### 2. 依存関係のインストール
-```bash
-pip install -r requirements.txt
-```
+### 重複排除の仕組み
+- **共通関数を`lambda_function.py`に集約**
+  - `format_currency()`: 通貨フォーマット
+  - `get_execution_info()`: 実行環境情報
+  - `display_*()`: 表示関数群
+- **他のファイルから直接インポート**
+  - 重複コードを完全排除
+  - 保守性と一貫性を確保
 
-## CLIツールの使用方法
+## 🚀 実行方法
 
-### サンプルプログラムの実行
+### 1. ローカル実行
 ```bash
+# サンプルプログラム実行
 python yfinance_sample.py
+
+# 検索ツール実行
+python yfinance_search.py apple US
+
+# CLIツール実行
+python yfinance_cli.py search apple US
+python yfinance_cli.py info AAPL 1mo
+python yfinance_cli.py basic AAPL
 ```
 
-### CLIツールの使用
+### 2. Docker実行
 
-#### 基本的な使用方法
+#### ローカルテスト用
 ```bash
-python yfinance_cli.py AAPL
+# ローカルテスト用Dockerコンテナビルド
+docker-compose build yfinance-local
+
+# 基本的なサンプル実行
+docker-compose run --rm yfinance-local python yfinance_sample.py
+
+# CLIツール実行
+docker-compose run --rm yfinance-local python yfinance_cli.py AAPL --price --info
+
+# 検索機能実行
+docker-compose run --rm yfinance-local python yfinance_search.py Apple
+
+# ローカルテスト実行
+docker-compose run --rm yfinance-local python local_test.py
+
+# 一括テスト実行
+./docker_test.sh
 ```
 
-#### オプション付きの使用方法
+#### Lambda用（デプロイ用）
 ```bash
-# 現在価格のみ表示
-python yfinance_cli.py AAPL --price
+# Lambda用Dockerコンテナビルド
+docker-compose build yfinance-lambda
 
-# 詳細情報を表示
-python yfinance_cli.py AAPL --info
+# Lambda関数テスト
+./docker_lambda_test.sh
 
-# 株価履歴を表示（1ヶ月分）
-python yfinance_cli.py AAPL --history
-
-# 株価履歴を表示（1年分）
-python yfinance_cli.py AAPL --history --period 1y
-
-# 全ての情報を表示
-python yfinance_cli.py AAPL --price --info --history
-
-# JSON形式で出力
-python yfinance_cli.py AAPL --price --info --json
+# 個別テスト
+docker-compose run --rm yfinance-lambda python -c "import lambda_function"
 ```
 
-## AWS API の構築・デプロイ
-
-### 前提条件
-
-AWS SAM CLI と AWS CLI が必要です：
-
+### 3. Lambda実行
 ```bash
-# AWS CLI のインストール
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip
-sudo ./aws/install
+# AWS CLIでデプロイ
+aws cloudformation deploy --template-file template.yaml --stack-name yfinance-stack
 
-# AWS SAM CLI のインストール
-pip install aws-sam-cli
-
-# AWS認証情報の設定
-aws configure
+# API Gateway経由でアクセス
+curl "https://your-api-gateway-url/prod/search?q=apple&region=US"
+curl "https://your-api-gateway-url/prod/info?ticker=AAPL&period=1mo"
 ```
 
-### ローカルテスト
-
-API機能をローカルでテストできます：
-
+### 4. ローカルHTTPサーバー
 ```bash
-# 基本的なAPIテスト
-python test_api.py
-
-# 特定の機能のみテスト
-python test_api.py price
-python test_api.py info
-python test_api.py history
-python test_api.py lambda
-
-# ローカルHTTPサーバーでテスト
+# ローカルテストサーバー起動
 python local_test.py
-# ブラウザで http://localhost:8000 にアクセス
+
+# ブラウザでアクセス
+# http://localhost:8000
 ```
 
-### AWS へのデプロイ
-
-```bash
-# デプロイ実行
-./deploy.sh
-```
-
-デプロイが成功すると、API Gateway のURLが表示され、自動的にSwagger仕様書が生成されます：
-
-#### Swagger自動生成機能
-
-デプロイ時に以下の機能が自動実行されます：
-
-1. **Lambda関数コード解析**: `swagger_generator_advanced.py`が`lambda_function.py`を解析
-2. **エンドポイント自動検出**: コードからAPIエンドポイントを自動検出
-3. **Swagger仕様書生成**: `swagger_auto.json`ファイルを自動生成
-4. **コンソール表示**: 生成されたSwagger仕様書をコンソールに表示
-
-**生成されるファイル**:
-- `swagger_auto.json`: プロジェクトルートディレクトリに生成
-
-**Swagger UIでの使用方法**:
-1. https://editor.swagger.io/ にアクセス
-2. 生成された`swagger_auto.json`の内容をコピー&ペースト
-3. または、PostmanでImport > Raw text でインポート
-
-**高度な自動生成の利点**:
-- **コード解析ベース**: 実際のLambda関数コードを解析
-- **自動検出**: エンドポイントを自動的に検出
-- **動的**: コードの変更に自動で追従
-- **保守性**: 手動での仕様書更新が不要
-
-デプロイが成功すると、API Gateway のURLが表示されます：
+## 📁 ファイル構成
 
 ```
-API Gateway URL: https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/
-
-=== API エンドポイント ===
-
-#### 1. 株価取得エンドポイント
-**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/price?ticker={ticker}`
-
-**説明**: 指定されたティッカーシンボルの現在の株価を取得します。
-
-**パラメータ**:
-- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
-
-**レスポンス例**:
-```json
-{
-  "symbol": "AAPL",
-  "price": 208.62,
-  "currency": "USD",
-  "timestamp": "2025-01-14T10:30:00Z"
-}
+YFinanceDocker/
+├── lambda_function.py          # メインLambda関数（共通関数群）
+├── yfinance_sample.py          # サンプルプログラム
+├── yfinance_search.py          # 検索ツール
+├── yfinance_cli.py             # CLIツール
+├── local_test.py               # ローカルHTTPサーバー
+├── Dockerfile                  # Lambda用Docker設定
+├── Dockerfile.local            # ローカルテスト用Docker設定
+├── docker-compose.yml          # Docker Compose設定
+├── docker_test.sh              # ローカルテスト実行スクリプト
+├── docker_lambda_test.sh       # Lambdaテスト実行スクリプト
+├── template.yaml               # CloudFormationテンプレート
+├── requirements.txt            # Python依存関係
+└── README.md                   # このファイル
 ```
 
-**使用例**:
-```bash
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/price?ticker=AAPL"
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/price?ticker=7203.T"
-```
+### Docker設定の分離
 
-#### 2. 詳細情報取得エンドポイント
-**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/info/{ticker}`
+| ファイル | 用途 | 説明 |
+|----------|------|------|
+| `Dockerfile` | Lambda用 | AWS Lambda環境用の設定 |
+| `Dockerfile.local` | ローカルテスト用 | 開発・テスト環境用の設定 |
+| `docker-compose.yml` | 両方のサービス定義 | ローカルとLambda両方のサービスを定義 |
 
-**説明**: 指定されたティッカーシンボルの詳細な企業情報を取得します。
+## 🔧 環境変数
 
-**パラメータ**:
-- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
+| 変数名 | 説明 | デフォルト値 |
+|--------|------|-------------|
+| `EXECUTION_MODE` | 実行モード（LOCAL/DOCKER/LAMBDA） | `LOCAL` |
+| `YFINANCE_API_URL` | API Gateway URL | `https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod` |
 
-**レスポンス例**:
-```json
-{
-  "symbol": "AAPL",
-  "name": "Apple Inc.",
-  "currentPrice": 208.62,
-  "previousClose": 211.16,
-  "marketCap": 3115906498560,
-  "dividendYield": 0.51,
-  "trailingPE": 32.44,
-  "fiftyTwoWeekHigh": 260.1,
-  "fiftyTwoWeekLow": 169.21,
-  "volume": 38711400,
-  "avgVolume": 45678900,
-  "open": 209.93,
-  "dayHigh": 210.91,
-  "dayLow": 207.54,
-  "priceChange": -2.54,
-  "priceChangePercent": -1.20
-}
-```
+## 📊 出力例
 
-**使用例**:
-```bash
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/info/AAPL"
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/info/7203.T"
-```
-
-#### 3. 株価履歴取得エンドポイント
-**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/history/{ticker}?period={period}`
-
-**説明**: 指定されたティッカーシンボルの株価履歴データを取得します。
-
-**パラメータ**:
-- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
-- `period` (オプション): 期間（デフォルト: 1mo）
-  - `1d`: 1日
-  - `5d`: 5日
-  - `1mo`: 1ヶ月
-  - `3mo`: 3ヶ月
-  - `6mo`: 6ヶ月
-  - `1y`: 1年
-  - `2y`: 2年
-  - `5y`: 5年
-  - `10y`: 10年
-  - `ytd`: 年初来
-  - `max`: 最大期間
-
-**レスポンス例**:
-```json
-{
-  "symbol": "AAPL",
-  "period": "1mo",
-  "data": {
-    "2025-01-14": {
-      "Open": 209.93,
-      "High": 210.91,
-      "Low": 207.54,
-      "Close": 208.62,
-      "Volume": 38711400,
-      "Dividends": 0.0,
-      "Stock Splits": 0.0
-    },
-    "2025-01-13": {
-      "Open": 210.50,
-      "High": 212.30,
-      "Low": 209.80,
-      "Close": 211.16,
-      "Volume": 42156000,
-      "Dividends": 0.0,
-      "Stock Splits": 0.0
-    }
-  }
-}
-```
-
-**使用例**:
-```bash
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/history/AAPL"
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/history/AAPL?period=1y"
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/history/7203.T?period=6mo"
-```
-
-#### 4. ニュース取得エンドポイント
-**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/news/{ticker}`
-
-**説明**: 指定されたティッカーシンボルに関連する最新ニュースを取得します。
-
-**パラメータ**:
-- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
-
-**レスポンス例**:
-```json
-{
-  "symbol": "AAPL",
-  "news": [
-    {
-      "title": "Apple Reports Record Q4 Earnings",
-      "link": "https://example.com/news/1",
-      "publisher": "Reuters",
-      "published": "2025-01-14T08:00:00Z",
-      "summary": "Apple Inc. reported record quarterly earnings..."
-    }
-  ]
-}
-```
-
-**使用例**:
-```bash
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/news/AAPL"
-```
-
-#### 5. 配当情報取得エンドポイント
-**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/dividends/{ticker}`
-
-**説明**: 指定されたティッカーシンボルの配当情報を取得します。
-
-**パラメータ**:
-- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
-
-**レスポンス例**:
-```json
-{
-  "symbol": "AAPL",
-  "dividendYield": 0.51,
-  "dividendRate": 0.96,
-  "payoutRatio": 0.16,
-  "exDividendDate": "2024-11-08",
-  "dividendHistory": [
-    {
-      "date": "2024-11-15",
-      "amount": 0.24,
-      "type": "Regular"
-    }
-  ]
-}
-```
-
-**使用例**:
-```bash
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/dividends/AAPL"
-```
-
-#### 6. オプション情報取得エンドポイント
-**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/options/{ticker}`
-
-**説明**: 指定されたティッカーシンボルのオプション情報を取得します。
-
-**パラメータ**:
-- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
-
-**レスポンス例**:
-```json
-{
-  "symbol": "AAPL",
-  "currentPrice": 208.62,
-  "options": {
-    "calls": [
-      {
-        "strike": 200,
-        "lastPrice": 12.50,
-        "bid": 12.45,
-        "ask": 12.55,
-        "volume": 1500,
-        "openInterest": 5000
-      }
-    ],
-    "puts": [
-      {
-        "strike": 200,
-        "lastPrice": 4.20,
-        "bid": 4.15,
-        "ask": 4.25,
-        "volume": 800,
-        "openInterest": 3000
-      }
-    ]
-  }
-}
-```
-
-**使用例**:
-```bash
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/options/AAPL"
-```
-
-#### 7. 財務情報取得エンドポイント
-**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/financials/{ticker}`
-
-**説明**: 指定されたティッカーシンボルの財務情報を取得します。
-
-**パラメータ**:
-- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
-
-**レスポンス例**:
-```json
-{
-  "symbol": "AAPL",
-  "financials": {
-    "incomeStatement": {
-      "revenue": 394328000000,
-      "grossProfit": 170782000000,
-      "operatingIncome": 114301000000,
-      "netIncome": 96995000000
-    },
-    "balanceSheet": {
-      "totalAssets": 352755000000,
-      "totalLiabilities": 287912000000,
-      "totalEquity": 64843000000
-    },
-    "cashFlow": {
-      "operatingCashFlow": 110543000000,
-      "investingCashFlow": -109559000000,
-      "financingCashFlow": -110543000000
-    }
-  }
-}
-```
-
-**使用例**:
-```bash
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/financials/AAPL"
-```
-
-#### 8. アナリスト予想取得エンドポイント
-**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/analysts/{ticker}`
-
-**説明**: 指定されたティッカーシンボルのアナリスト予想情報を取得します。
-
-**パラメータ**:
-- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
-
-**レスポンス例**:
-```json
-{
-  "symbol": "AAPL",
-  "analystRecommendations": {
-    "strongBuy": 15,
-    "buy": 20,
-    "hold": 8,
-    "sell": 2,
-    "strongSell": 1,
-    "meanRecommendation": "Buy",
-    "targetMean": 225.50,
-    "targetMedian": 220.00,
-    "targetHigh": 250.00,
-    "targetLow": 180.00
-  }
-}
-```
-
-**使用例**:
-```bash
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/analysts/AAPL"
-```
-
-#### 9. 銘柄検索エンドポイント
-**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/search?query={query}&region={region}`
-
-**説明**: キーワードによる銘柄検索を実行します。
-
-**パラメータ**:
-- `query` (必須): 検索キーワード（例: apple, microsoft）
-- `region` (オプション): 検索リージョン（デフォルト: US）
-  - `US`: アメリカ市場
-  - `JP`: 日本市場
-
-**レスポンス例**:
+### 検索結果
 ```json
 {
   "query": "apple",
   "region": "US",
-  "count": 7,
+  "count": 5,
   "results": [
     {
       "symbol": "AAPL",
       "name": "Apple Inc.",
       "exchange": "NMS",
-      "type": "Equity",
-      "score": 31292.0
-    },
-    {
-      "symbol": "APLE",
-      "name": "Apple Hospitality REIT Inc",
-      "exchange": "NYQ",
-      "type": "Equity",
-      "score": 1250.0
+      "type": "EQUITY",
+      "current_price": 150.25,
+      "currency": "USD",
+      "price_change": 2.15,
+      "price_change_percent": 1.45,
+      "price_change_direction": "up"
     }
-  ]
+  ],
+  "execution_info": {
+    "mode": "LOCAL",
+    "timestamp": "2024-01-15T10:30:00",
+    "server": "lambda"
+  }
 }
 ```
 
-**使用例**:
-```bash
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/search?query=apple"
-curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/search?query=トヨタ&region=JP"
-```
-
-### エラーレスポンス
-
-すべてのエンドポイントで、エラーが発生した場合は以下の形式でレスポンスが返されます：
-
+### 包括的情報
 ```json
 {
-  "error": "エラーメッセージ",
-  "status": "error",
-  "timestamp": "2025-01-14T10:30:00Z"
-}
-```
-
-### 共通レスポンスヘッダー
-
-すべてのAPIレスポンスには以下のヘッダーが含まれます：
-
-- `Content-Type: application/json`
-- `Access-Control-Allow-Origin: *`
-- `Access-Control-Allow-Methods: GET, POST, OPTIONS`
-- `Access-Control-Allow-Headers: Content-Type`
-
-### レート制限
-
-- 各エンドポイント: 1000リクエスト/分
-- 全体: 10000リクエスト/日
-- 超過時は429エラーが返されます
-```
-
-### API の使用例
-
-```bash
-# 株価取得
-curl "https://your-api-url/prod/price/AAPL"
-
-# 詳細情報取得
-curl "https://your-api-url/prod/info/MSFT"
-
-# 履歴データ取得
-curl "https://your-api-url/prod/history/GOOGL?period=1y"
-
-# ニュース取得
-curl "https://your-api-url/prod/news/AAPL"
-
-# 配当情報取得
-curl "https://your-api-url/prod/dividends/MSFT"
-
-# オプション情報取得
-curl "https://your-api-url/prod/options/TSLA"
-
-# 財務情報取得
-curl "https://your-api-url/prod/financials/NVDA"
-
-# アナリスト予想取得
-curl "https://your-api-url/prod/analysts/AMZN"
-
-# 銘柄検索
-curl "https://your-api-url/prod/search?query=apple"
-curl "https://your-api-url/prod/search?query=トヨタ&region=JP"
-```
-
-### リソースの削除
-
-```bash
-# AWS リソースを削除
-./cleanup.sh
-```
-
-## AWS デプロイマニュアル
-
-このセクションでは、YFinanceアプリケーションをAWS Lambdaにデプロイする詳細な手順を説明します。
-
-### 1. AWS アカウントの準備
-
-1. AWSアカウントを持っていない場合は、[AWS公式サイト](https://aws.amazon.com/)で作成してください
-2. IAMユーザーに以下の権限が必要です：
-   - AWSLambdaFullAccess
-   - AmazonAPIGatewayAdministrator
-   - AWSCloudFormationFullAccess
-   - IAMFullAccess（または最小限必要な権限）
-
-### 2. 開発環境のセットアップ
-
-1. AWS CLIのインストール：
-   ```bash
-   # macOS/Linux
-   curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-   unzip awscliv2.zip
-   sudo ./aws/install
-   
-   # Windows
-   # https://aws.amazon.com/cli/ からインストーラーをダウンロード
-   ```
-
-2. AWS SAM CLIのインストール：
-   ```bash
-   pip install aws-sam-cli
-   ```
-
-3. AWS認証情報の設定：
-   ```bash
-   aws configure
-   # AWS Access Key ID: [アクセスキーを入力]
-   # AWS Secret Access Key: [シークレットキーを入力]
-   # Default region name: [リージョン名を入力（例：ap-northeast-1）]
-   # Default output format: [出力形式を入力（例：json）]
-   ```
-
-### 3. プロジェクトの準備
-
-1. 依存関係のインストール：
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. `template.yaml`の確認：
-   - Lambda関数の設定
-   - API Gatewayのエンドポイント設定
-   - 必要に応じて、タイムアウトやメモリサイズを調整
-
-### 4. ローカルテスト
-
-デプロイ前にローカルでテストすることをお勧めします：
-
-1. 基本機能のテスト：
-   ```bash
-   python test_api.py
-   ```
-
-2. ローカルHTTPサーバーでのテスト：
-   ```bash
-   python local_test.py
-   # ブラウザで http://localhost:8000 にアクセス
-   ```
-
-### 5. AWS へのデプロイ
-
-1. デプロイスクリプトの実行：
-   ```bash
-   ./deploy.sh
-   ```
-
-2. デプロイプロセスの流れ：
-   - SAMテンプレートのビルド
-   - CloudFormationスタックの作成/更新
-   - Lambda関数のデプロイｙ
-   - API Gatewayの設定
-
-3. デプロイが成功すると、以下のような出力が表示されます：
-   ```
-   API Gateway URL: https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/
-   
-   === API エンドポイント ===
-   株価取得: GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/price/{ticker}
-   詳細情報: GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/info/{ticker}
-   履歴データ: GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/history/{ticker}?period=1mo
-   ```
-
-### 6. デプロイ後の確認
-
-1. エンドポイントのテスト：
-   ```bash
-   # 株価取得
-   curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/price/AAPL"
-   
-   # 詳細情報取得
-   curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/info/MSFT"
-   
-   # 履歴データ取得
-   curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/history/GOOGL?period=1y"
-   ```
-
-2. AWS Management Consoleでの確認：
-   - Lambda関数の確認（AWS Lambdaコンソール）
-   - API Gatewayの確認（API Gatewayコンソール）
-   - CloudFormationスタックの確認（CloudFormationコンソール）
-
-### 7. トラブルシューティング
-
-1. デプロイエラー：
-   - AWS認証情報が正しく設定されているか確認
-   - IAMユーザーに必要な権限があるか確認
-   - AWS_DEFAULT_REGIONが正しく設定されているか確認
-
-2. Lambda実行エラー：
-   - CloudWatchログを確認（AWS Lambdaコンソールから）
-   - 依存関係が正しくパッケージングされているか確認
-   - タイムアウト設定が適切か確認
-
-3. API Gatewayエラー：
-   - CORSが正しく設定されているか確認
-   - Lambda統合が正しく設定されているか確認
-
-### 8. リソースの削除
-
-プロジェクトが不要になった場合：
-```bash
-./cleanup.sh
-```
-
-このスクリプトは以下のリソースを削除します：
-- CloudFormationスタック
-- Lambda関数
-- API Gateway
-- IAMロール
-
-## API仕様
-
-詳細なAPI仕様については `api_documentation.md` を参照してください。
-
-### エンドポイント一覧
-
-| エンドポイント | メソッド | 説明 |
-|---------------|---------|------|
-| `/price/{ticker}` | GET | 現在の株価取得 |
-| `/info/{ticker}` | GET | 株式の詳細情報取得 |
-| `/history/{ticker}` | GET | 株価履歴取得（期間指定可能） |
-| `/news/{ticker}` | GET | 関連ニュース取得 |
-| `/dividends/{ticker}` | GET | 配当情報取得 |
-| `/options/{ticker}` | GET | オプション情報取得 |
-| `/financials/{ticker}` | GET | 財務情報取得 |
-| `/analysts/{ticker}` | GET | アナリスト予想取得 |
-| `/search` | GET | 銘柄検索（キーワード・リージョン指定） |
-
-### 対応するティッカーシンボル
-
-- **アメリカ株**: AAPL, MSFT, GOOGL, TSLA, NVDA, AMZN, META, NFLX, AMD, INTC など
-- **日本株**: 7203.T (トヨタ), 9984.T (ソフトバンク), 6501.T (日立), 6758.T (ソニー), 6861.T (キーエンス) など
-- **その他の世界市場**: 対応する取引所の形式に従う
-
-## プロジェクト構成
-
-```
-.
-├── yfinance_cli.py          # CLIツール（元の実装）
-├── yfinance_sample.py       # サンプルプログラム
-├── lambda_function.py       # AWS Lambda関数
-├── template.yaml            # AWS SAM テンプレート
-├── deploy.sh               # デプロイスクリプト
-├── cleanup.sh              # リソース削除スクリプト
-├── test_api.py             # APIテスト用スクリプト
-├── local_test.py           # ローカルHTTPサーバー
-├── api_documentation.md    # API詳細ドキュメント
-├── requirements.txt        # Python依存関係
-└── README.md              # このファイル
-```
-
-## トラブルシューティング
-
-### デプロイエラー
-
-1. **AWS認証エラー**: `aws configure` で認証情報を設定
-2. **権限エラー**: IAMユーザーに適切な権限を付与
-3. **リージョンエラー**: `AWS_DEFAULT_REGION` 環境変数を設定
-
-### API エラー
-
-1. **CORS エラー**: すでに設定済みですが、ブラウザの開発者ツールで確認
-2. **データ取得エラー**: Yahoo Finance の制限や無効なティッカーシンボル
-3. **タイムアウト**: Lambda の実行時間制限（30秒）を確認
-
-## 開発者向け情報
-
-### コード構成
-
-- **CLI機能**: `yfinance_cli.py` - 元のCLI実装
-- **API機能**: `lambda_function.py` - AWS Lambda用の実装
-- **共通ロジック**: 株価取得ロジックは両方で共有
-
-### カスタマイズ
-
-- **タイムアウト調整**: `template.yaml` の `Timeout` 設定
-- **メモリ調整**: `template.yaml` の `MemorySize` 設定
-- **CORS設定**: `lambda_function.py` と `template.yaml` の設定
-
-## ライセンス
-
-このプロジェクトはオープンソースです。
-
-## 出力項目の説明
-
-### 価格情報（--price）
-
-| 項目 | 説明 | 例 |
-|------|------|-----|
-| 現在価格 | 最新の取引価格 | $208.62 |
-
-### 詳細情報（--info）
-
-| 項目 | 説明 | 例 |
-|------|------|-----|
-| 会社名 | 企業の正式名称 | Apple Inc. |
-| 現在価格 | 最新の取引価格 | $208.62 |
-| 前日終値 | 前営業日の終値 | $211.16 |
-| 時価総額 | 発行済み株式総数×株価 | $3,115,906,498,560 |
-| 配当利回り | 年間配当金÷株価×100（%） | 0.51 |
-| P/E比率 | 株価収益率（株価÷1株当たり利益） | 32.44 |
-| 52週高値 | 過去52週間の最高値 | $260.1 |
-| 52週安値 | 過去52週間の最安値 | $169.21 |
-
-### 株価履歴（--history）
-
-| 項目 | 説明 | 例 |
-|------|------|-----|
-| Date | 取引日 | 2025-07-14 |
-| Open | 始値 | 209.93 |
-| High | 高値 | 210.91 |
-| Low | 安値 | 207.54 |
-| Close | 終値 | 208.62 |
-| Volume | 出来高（取引量） | 38,711,400 |
-
-### 検索結果（search）
-
-| 項目 | 説明 | 例 |
-|------|------|-----|
-| シンボル | ティッカーシンボル | AAPL |
-| 名称 | 企業/銘柄名 | Apple Inc. |
-| 取引所 | 上場している取引所 | NMS (NASDAQ) |
-| 種類 | 証券の種類 | Equity (株式) |
-
-## JSON形式の出力
-
-`--json`オプションを使用すると、結果をJSON形式で取得できます。これはAPIとしての利用や他のプログラムとの連携に便利です。
-
-### 価格情報のJSON
-```json
-{
-  "price": 208.62
-}
-```
-
-### 詳細情報のJSON
-```json
-{
+  "ticker": "AAPL",
   "info": {
-    "symbol": "AAPL",        // ティッカーシンボル
-    "name": "Apple Inc.",    // 会社名
-    "currentPrice": 208.62,  // 現在価格
-    "previousClose": 211.16, // 前日終値
-    "marketCap": 3115906498560, // 時価総額
-    "dividendYield": 0.51,   // 配当利回り
-    "trailingPE": 32.44479,  // P/E比率
-    "fiftyTwoWeekHigh": 260.1, // 52週高値
-    "fiftyTwoWeekLow": 169.21  // 52週安値
+    "longName": "Apple Inc.",
+    "industry": "Consumer Electronics",
+    "sector": "Technology"
+  },
+  "price": {
+    "current_price": 150.25,
+    "currency": "USD",
+    "price_change": 2.15,
+    "price_change_percent": 1.45
+  },
+  "sustainability": {
+    "esgScores": {
+      "totalEsg": 85,
+      "environmentScore": 80,
+      "socialScore": 90,
+      "governanceScore": 85
+    }
+  },
+  "financials": {
+    "income_statement": {
+      "Total Revenue": {"2023": 394328000000}
+    }
+  },
+  "execution_info": {
+    "mode": "LOCAL",
+    "timestamp": "2024-01-15T10:30:00",
+    "server": "lambda"
   }
 }
 ```
 
-### 株価履歴のJSON
-```json
-{
-  "history": {
-    "2025-07-14": {
-      "Open": 209.9299926758,  // 始値
-      "High": 210.9100036621,  // 高値
-      "Low": 207.5399932861,   // 安値
-      "Close": 208.6199951172, // 終値
-      "Volume": 38711400,      // 出来高
-      "Dividends": 0.0,        // 配当
-      "Stock Splits": 0.0      // 株式分割
-    },
-    // 他の日付...
-  }
-}
-```
+## 🎯 統一の利点
 
-### 検索結果のJSON
-```json
-{
-  "query": "apple",        // 検索キーワード
-  "region": "US",          // 検索リージョン
-  "count": 7,              // 結果数
-  "results": [
-    {
-      "symbol": "AAPL",    // ティッカーシンボル
-      "name": "Apple Inc.", // 会社名
-      "exchange": "NMS",   // 取引所
-      "type": "Equity",    // 証券の種類
-      "score": 31292.0     // 検索スコア（関連度）
-    },
-    // 他の結果...
-  ]
-}
-```
+### 1. 開発効率の向上
+- **同じ関数を使用**: 3つの環境で同じロジック
+- **デバッグの簡素化**: 問題の特定が容易
+- **テストの統一**: 同じテストケースで全環境を検証
 
-### Docker 使用のメリット
-- Python環境のインストール不要
-- 依存関係の管理が簡単
-- どのOSでも同じ動作を保証
-- 仮想環境の作成・管理が不要
+### 2. 保守性の向上
+- **重複コードの排除**: 共通関数を一箇所で管理
+- **一貫性の確保**: 出力形式が完全に統一
+- **変更の簡素化**: 修正は`lambda_function.py`のみ
 
-### 利用可能な期間オプション
-- `1d`: 1日
-- `5d`: 5日
-- `1mo`: 1ヶ月
-- `3mo`: 3ヶ月
-- `6mo`: 6ヶ月
-- `1y`: 1年
-- `2y`: 2年
-- `5y`: 5年
-- `10y`: 10年
-- `ytd`: 年初来
-- `max`: 最大期間
+### 3. 信頼性の向上
+- **同じエラーハンドリング**: 全環境で統一されたエラー処理
+- **データ品質の保証**: 同じデータ取得ロジック
+- **実行環境情報の自動付与**: トレーサビリティの確保
 
-## ティッカーシンボルの例
+## 🔄 従来方式との比較
 
-### 米国株式
-- `AAPL`: Apple Inc.
-- `MSFT`: Microsoft Corporation
-- `GOOGL`: Alphabet Inc.
-- `AMZN`: Amazon.com Inc.
-- `TSLA`: Tesla Inc.
+| 項目 | 従来方式 | 統一方式（Lambda関数直接使用） |
+|------|----------|-------------------------------|
+| コード重複 | 各ファイルに類似関数 | 共通関数を集約 |
+| 出力形式 | 環境により異なる | 完全統一 |
+| 保守性 | 低い（修正箇所が多い） | 高い（一箇所で管理） |
+| デバッグ | 困難（環境ごとに確認） | 容易（同じロジック） |
+| テスト | 環境ごとに必要 | 統一テストで全環境対応 |
 
-### 日本株式
-- `7203.T`: トヨタ自動車
-- `6758.T`: ソニーグループ
-- `9984.T`: ソフトバンクグループ
-- `6861.T`: キーエンス
-- `7974.T`: 任天堂
+## 🛠️ 技術スタック
 
-## 機能
+- **Python 3.9+**
+- **YFinance**: 株式データ取得
+- **AWS Lambda**: サーバーレス実行環境
+- **Docker**: コンテナ化
+- **AWS API Gateway**: RESTful API
+- **CloudFormation**: インフラストラクチャ管理
 
-### yfinance_sample.py
-- 株式データの取得
-- 基本情報の表示
-- リターン分析
-- グラフ描画（matplotlib）
+## 📝 ライセンス
 
-### yfinance_cli.py
-- コマンドラインからの株式情報取得
-- 現在価格の表示
-- 詳細情報の表示
-- 株価履歴の表示
-- JSON形式での出力
+このプロジェクトはMITライセンスの下で公開されています。
 
-### yfinance_search.py
-- キーワードによる銘柄検索
-- 米国・日本市場での検索
-- 検索結果の表形式表示
-- JSON形式での出力
+## 🤝 コントリビューション
 
-## ファイル構成
+1. このリポジトリをフォーク
+2. 機能ブランチを作成 (`git checkout -b feature/amazing-feature`)
+3. 変更をコミット (`git commit -m 'Add amazing feature'`)
+4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
+5. プルリクエストを作成
 
-### 主要ファイル
-- `lambda_function.py`: AWS Lambda関数のメインコード
-- `template.yaml`: AWS SAMテンプレート
-- `deploy.sh`: デプロイスクリプト
-- `swagger_generator_advanced.py`: Swagger自動生成ツール（コード解析ベース）
-- `swagger_auto.json`: 自動生成されるSwagger仕様書
+## 📞 サポート
 
-### CLIツール
-- `yfinance_cli.py`: コマンドライン株式データ取得ツール
-- `yfinance_search.py`: 銘柄検索ツール
-- `yfinance_sample.py`: サンプルプログラム
-
-### テスト・開発用
-- `test_api.py`: API機能テスト
-- `local_test.py`: ローカルHTTPサーバーテスト
-- `requirements.txt`: Python依存関係
-
-## 注意事項
-
-- インターネット接続が必要です
-- Yahoo FinanceのAPIを使用しているため、利用制限がある場合があります
-- 日本株式の場合は、ティッカーシンボルの後に`.T`を付けてください
-- Swagger仕様書はデプロイ時に自動生成されます（`swagger_auto.json`）
-
-## トラブルシューティング
-
-### 仮想環境が有効になっていない場合
-```bash
-source venv/bin/activate
-```
-
-### 依存関係の再インストール
-```bash
-pip install -r requirements.txt --force-reinstall
-```
-
-### 権限エラーの場合
-```bash
-chmod +x yfinance_sample.py yfinance_cli.py yfinance_search.py
-```
-
-### Dockerのトラブルシューティング
-```bash
-# イメージの再ビルド
-docker build --no-cache -t yfinance .
-
-# Docker Composeの再ビルド
-docker-compose build --no-cache
-``` 
+問題や質問がある場合は、GitHubのIssuesページでお知らせください。 

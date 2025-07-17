@@ -1,128 +1,198 @@
 #!/usr/bin/env python3
 """
-YFinance CLI ツール
-コマンドラインから株式データを取得・分析する
+YFinance CLI ツール - 新API対応版
+コマンドラインから株式データを取得する（Lambda関数を直接使用して統一）
 """
 
 import argparse
-import yfinance as yf
 import sys
+import os
 import json
-from datetime import datetime
+from typing import Optional, Dict, Any
 
-def get_stock_price(ticker):
-    """現在の株価を取得"""
-    try:
-        stock = yf.Ticker(ticker)
-        current_price = stock.info.get('currentPrice', stock.info.get('regularMarketPrice'))
-        return current_price
-    except Exception as e:
-        print(f"エラー: {e}")
-        return None
+# Lambda関数から直接インポート（統一のため）
+from lambda_function import (
+    get_stock_info_api,
+    search_stocks_api,
+    get_api_gateway_url,
+    # 共通関数をインポート（重複回避）
+    format_currency,
+    get_execution_info,
+    display_stock_info_local,
+    display_comprehensive_info_api,
+    display_search_results_api
+)
 
-def get_stock_history(ticker, period="1mo"):
-    """株価履歴を取得"""
-    try:
-        stock = yf.Ticker(ticker)
-        data = stock.history(period=period)
-        return data
-    except Exception as e:
-        print(f"エラー: {e}")
-        return None
+# 実行モード設定
+EXECUTION_MODE = os.getenv('EXECUTION_MODE', 'LOCAL')  # LOCAL, DOCKER, LAMBDA
 
-def get_stock_info(ticker):
-    """株式情報を取得"""
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        
-        # 必要な情報だけを抽出
-        result = {
-            'symbol': ticker,
-            'name': info.get('longName', 'N/A'),
-            'currentPrice': info.get('currentPrice', 'N/A'),
-            'previousClose': info.get('previousClose', 'N/A'),
-            'marketCap': info.get('marketCap', 'N/A'),
-            'dividendYield': info.get('dividendYield', 'N/A'),
-            'trailingPE': info.get('trailingPE', 'N/A'),
-            'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 'N/A'),
-            'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 'N/A')
-        }
-        return result
-    except Exception as e:
-        print(f"エラー: {e}")
-        return None
+# APIエンドポイント設定（環境変数から取得可能）
+API_BASE_URL = os.getenv('YFINANCE_API_URL', "https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod")
 
-def display_stock_info(ticker):
-    """株式情報を表示"""
-    info = get_stock_info(ticker)
-    if not info:
-        return
+def search_stocks_cli(query: str, region: str = "US") -> Optional[Dict[str, Any]]:
+    """
+    CLI用の株式検索（Lambda関数直接使用）
     
-    print(f"\n=== {ticker} の情報 ===")
-    print(f"会社名: {info['name']}")
-    print(f"現在価格: ${info['currentPrice']}")
-    print(f"前日終値: ${info['previousClose']}")
-    print(f"時価総額: ${info['marketCap']:,}" if isinstance(info['marketCap'], (int, float)) else f"時価総額: {info['marketCap']}")
-    print(f"配当利回り: {info['dividendYield']}")
-    print(f"P/E比率: {info['trailingPE']}")
-    print(f"52週高値: ${info['fiftyTwoWeekHigh']}")
-    print(f"52週安値: ${info['fiftyTwoWeekLow']}")
+    Args:
+        query (str): 検索クエリ
+        region (str): 検索地域
+    
+    Returns:
+        dict: 検索結果
+    """
+    try:
+        # Lambda関数を直接呼び出し
+        query_params = {'region': region}
+        result = search_stocks_api(query, query_params)
+        
+        # 実行環境情報を追加
+        if not result.get('error'):
+            result['execution_info'] = get_execution_info(EXECUTION_MODE)
+        
+        return result
+            
+    except Exception as e:
+        print(f"予期しないエラー: {e}")
+        return {'error': f'検索エラー: {e}'}
+
+def get_stock_info_cli(ticker: str, period: str = "1mo") -> Optional[Dict[str, Any]]:
+    """
+    CLI用の包括的株式データ取得（Lambda関数直接使用）
+    
+    Args:
+        ticker (str): ティッカーシンボル
+        period (str): 取得期間
+    
+    Returns:
+        dict: 包括的な株式データ
+    """
+    try:
+        # Lambda関数を直接呼び出し
+        result = get_stock_info_api(ticker, period)
+        
+        # 実行環境情報を追加
+        if not result.get('error'):
+            result['execution_info'] = get_execution_info(EXECUTION_MODE)
+        
+        return result
+            
+    except Exception as e:
+        print(f"予期しないエラー: {e}")
+        return {'error': f'データ取得エラー: {e}'}
+
+def display_basic_info(ticker: str) -> None:
+    """
+    基本情報を表示（共通関数を使用）
+    
+    Args:
+        ticker (str): ティッカーシンボル
+    """
+    display_stock_info_local(ticker)
 
 def main():
-    parser = argparse.ArgumentParser(description='YFinance CLI ツール')
-    parser.add_argument('ticker', help='ティッカーシンボル（例：AAPL, MSFT, 7203.T）')
-    parser.add_argument('--price', action='store_true', help='現在の株価を表示')
-    parser.add_argument('--info', action='store_true', help='詳細情報を表示')
-    parser.add_argument('--history', action='store_true', help='株価履歴を表示')
-    parser.add_argument('--period', default='1mo', 
-                       choices=['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max'],
-                       help='履歴の期間（デフォルト: 1mo）')
-    parser.add_argument('--json', action='store_true', help='結果をJSON形式で出力')
+    """メイン関数 - Lambda関数を直接使用して完全統一"""
+    parser = argparse.ArgumentParser(
+        description='YFinance CLI ツール - Lambda関数直接使用版',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用例:
+  %(prog)s search apple US          # Appleを検索
+  %(prog)s info AAPL 1mo            # AAPLの1ヶ月データ
+  %(prog)s basic AAPL               # AAPLの基本情報
+  %(prog)s search toyota JP         # トヨタを日本で検索
+  %(prog)s search apple US --json   # JSON形式で出力
+  %(prog)s info AAPL 1mo --json     # JSON形式で出力
+        """
+    )
+    
+    # グローバルオプション
+    parser.add_argument('--json', action='store_true', 
+                       help='JSON形式で出力（機械可読形式）')
+    
+    subparsers = parser.add_subparsers(dest='command', help='利用可能なコマンド')
+    
+    # 検索コマンド
+    search_parser = subparsers.add_parser('search', help='株式を検索')
+    search_parser.add_argument('query', help='検索クエリ')
+    search_parser.add_argument('--region', default='US', 
+                               choices=['US', 'JP', 'DE', 'CA', 'AU', 'GB', 'FR', 'IT', 'ES', 'KR', 'IN', 'HK', 'SG'],
+                               help='検索地域（デフォルト: US）')
+    
+    # 包括的情報コマンド
+    info_parser = subparsers.add_parser('info', help='包括的な株式情報を取得')
+    info_parser.add_argument('ticker', help='ティッカーシンボル')
+    info_parser.add_argument('--period', default='1mo',
+                             choices=['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max'],
+                             help='取得期間（デフォルト: 1mo）')
+    
+    # 基本情報コマンド
+    basic_parser = subparsers.add_parser('basic', help='基本情報を表示')
+    basic_parser.add_argument('ticker', help='ティッカーシンボル')
     
     args = parser.parse_args()
     
-    if not any([args.price, args.info, args.history]):
-        # デフォルトで現在価格と基本情報を表示
-        args.price = True
-        args.info = True
+    # JSON出力モードの場合はヘッダーを表示しない
+    if not args.json:
+        # 実行環境情報を表示
+        exec_info = get_execution_info(EXECUTION_MODE)
+        print("YFinance CLI ツール - Lambda関数直接使用版")
+        print("=" * 50)
+        print(f"実行モード: {exec_info['mode']}")
+        print(f"API URL: {API_BASE_URL}")
+        print(f"実行時刻: {exec_info['timestamp']}")
+        print("=" * 50)
     
-    result = {}
-    
-    if args.price:
-        price = get_stock_price(args.ticker)
-        if price:
+    if args.command == 'search':
+        if not args.json:
+            print(f"\n検索クエリ: '{args.query}' (地域: {args.region})")
+            print("-" * 40)
+        
+        results = search_stocks_cli(args.query, args.region)
+        if results:
             if args.json:
-                result['price'] = price
+                # JSON形式で出力
+                print(json.dumps(results, indent=2, ensure_ascii=False))
             else:
-                print(f"{args.ticker} の現在価格: ${price:.2f}")
+                # 人間可読形式で出力
+                display_search_results_api(results)
     
-    if args.info:
-        info = get_stock_info(args.ticker)
-        if info:
+    elif args.command == 'info':
+        if not args.json:
+            print(f"\n包括的情報取得: {args.ticker} (期間: {args.period})")
+            print("-" * 45)
+        
+        data = get_stock_info_cli(args.ticker, args.period)
+        if data:
             if args.json:
-                result['info'] = info
+                # JSON形式で出力
+                print(json.dumps(data, indent=2, ensure_ascii=False))
             else:
-                display_stock_info(args.ticker)
+                # 人間可読形式で出力
+                display_comprehensive_info_api(data)
     
-    if args.history:
-        data = get_stock_history(args.ticker, args.period)
-        if data is not None and not data.empty:
-            if args.json:
-                # DataFrameをJSON形式に変換
-                # 日付インデックスを文字列に変換
-                data.index = data.index.strftime('%Y-%m-%d')
-                result['history'] = json.loads(data.to_json(orient='index'))
-            else:
-                print(f"\n=== {args.ticker} の株価履歴（{args.period}） ===")
-                print(data[['Open', 'High', 'Low', 'Close', 'Volume']].tail(10))
-        else:
-            if not args.json:
-                print("履歴データを取得できませんでした")
+    elif args.command == 'basic':
+        if not args.json:
+            print(f"\n基本情報取得: {args.ticker}")
+            print("-" * 25)
+        
+        # 基本情報は現在JSON出力に対応していないため、通常表示
+        display_basic_info(args.ticker)
     
-    # JSON形式で出力
-    if args.json:
-        print(json.dumps(result, indent=2))
+    else:
+        parser.print_help()
+        return
+    
+    if not args.json:
+        print("\n" + "=" * 50)
+        print("実行完了")
+        print("\n統一された特徴:")
+        print("• Lambda関数を直接使用して完全統一")
+        print("• 17種類の包括的な金融データ")
+        print("• 高速な株式検索機能")
+        print("• ESG情報、財務諸表、株主情報など")
+        print("• 複数地域での検索対応")
+        print("• 重複コードの排除")
+        print(f"\n実行環境: {get_execution_info(EXECUTION_MODE)['mode']}")
 
 if __name__ == "__main__":
     main() 

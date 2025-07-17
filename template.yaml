@@ -15,6 +15,8 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
+      BinaryMediaTypes:
+        - image/png
       Cors:
         AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
@@ -44,109 +46,18 @@ Resources:
             RestApiId: !Ref YFinanceApi
             Path: /search
             Method: get
-        GetPrice:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /price
-            Method: get
         GetInfo:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
             Path: /info
             Method: get
-        GetHistory:
+        GetChart:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /history
+            Path: /chart
             Method: get
-        GetNews:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /news
-            Method: get
-        GetDividends:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /dividends
-            Method: get
-        GetOptions:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /options
-            Method: get
-        GetFinancials:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /financials
-            Method: get
-        GetAnalysts:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /analysts
-            Method: get
-        # OPTIONS requests for CORS
-        OptionsSearch:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /search
-            Method: options
-        OptionsPrice:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /price/{ticker}
-            Method: options
-        OptionsInfo:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /info/{ticker}
-            Method: options
-        OptionsHistory:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /history/{ticker}
-            Method: options
-        OptionsNews:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /news/{ticker}
-            Method: options
-        OptionsDividends:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /dividends/{ticker}
-            Method: options
-        OptionsOptions:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /options/{ticker}
-            Method: options
-        OptionsFinancials:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /financials/{ticker}
-            Method: options
-        OptionsAnalysts:
-          Type: Api
-          Properties:
-            RestApiId: !Ref YFinanceApi
-            Path: /analysts/{ticker}
-            Method: options
     Metadata:
       Dockerfile: Dockerfile
       DockerContext: .
