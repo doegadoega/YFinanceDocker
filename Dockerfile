@@ -1,19 +1,13 @@
-FROM python:3.10-slim
+FROM public.ecr.aws/lambda/python:3.9
 
-WORKDIR /app
+# 依存関係をコピー
+COPY requirements.txt ${LAMBDA_TASK_ROOT}
 
-# 必要なパッケージをインストール
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 依存関係をインストール
+RUN pip install -r requirements.txt
 
-# アプリケーションコードをコピー
-COPY yfinance_sample.py .
-COPY yfinance_cli.py .
-COPY yfinance_search.py .
+# 関数コードをコピー
+COPY lambda_function.py ${LAMBDA_TASK_ROOT}
 
-# 実行権限を付与
-RUN chmod +x yfinance_sample.py yfinance_cli.py yfinance_search.py
-
-# コンテナ起動時のデフォルトコマンド
-ENTRYPOINT ["python"]
-CMD ["yfinance_cli.py", "--help"] 
+# ハンドラーを設定
+CMD [ "lambda_function.lambda_handler" ] 

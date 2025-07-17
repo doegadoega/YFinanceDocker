@@ -1,6 +1,6 @@
 import json
 import yfinance as yf
-import pandas as pd
+# import pandas as pd
 from datetime import datetime
 import traceback
 
@@ -143,20 +143,23 @@ def get_stock_history_api(ticker, period='1mo'):
             period = '1mo'
         
         stock = yf.Ticker(ticker)
-        data = stock.history(period=period)
+        hist = stock.history(period=period)
         
-        if data.empty:
+        # DataFrameを直接処理せずに、yfinanceから返されるデータを変換
+        if len(hist) == 0:
             return {'error': f'履歴データが取得できませんでした: {ticker}'}
         
-        # DataFrameを辞書形式に変換
+        # 履歴データを手動で変換
         history_data = []
-        for date, row in data.iterrows():
+        for i in range(len(hist)):
+            date = hist.index[i]
+            row = hist.iloc[i]
             history_data.append({
                 'date': date.strftime('%Y-%m-%d'),
-                'open': round(row['Open'], 2),
-                'high': round(row['High'], 2),
-                'low': round(row['Low'], 2),
-                'close': round(row['Close'], 2),
+                'open': round(float(row['Open']), 2),
+                'high': round(float(row['High']), 2),
+                'low': round(float(row['Low']), 2),
+                'close': round(float(row['Close']), 2),
                 'volume': int(row['Volume'])
             })
         

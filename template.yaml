@@ -6,7 +6,6 @@ Globals:
   Function:
     Timeout: 30
     MemorySize: 512
-    Runtime: python3.9
     Environment:
       Variables:
         PYTHONPATH: /opt/python
@@ -24,11 +23,9 @@ Resources:
   YFinanceFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: .
-      Handler: lambda_function.lambda_handler
-      Runtime: python3.9
+      PackageType: Image
+      MemorySize: 1024
       Timeout: 30
-      MemorySize: 512
       Events:
         GetPrice:
           Type: Api
@@ -66,6 +63,10 @@ Resources:
             RestApiId: !Ref YFinanceApi
             Path: /history/{ticker}
             Method: options
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: .
+      DockerTag: latest
 
 Outputs:
   YFinanceApiUrl:

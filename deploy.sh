@@ -48,19 +48,26 @@ else
     aws s3 mb s3://$BUCKET_NAME --region $REGION
 fi
 
+# 既存のスタックを削除（存在する場合）
+echo "既存のスタックをクリーンアップしています..."
+aws cloudformation delete-stack --stack-name $STACK_NAME --region $REGION || true
+echo "スタックの削除を待機中..."
+aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME --region $REGION || true
+
 # SAM ビルド
 echo "SAM ビルドを実行しています..."
-sam build
+sam build --use-container
 
 # SAM デプロイ
 echo "SAM デプロイを実行しています..."
 sam deploy \
-    --template-file .aws-sam/build/template.yaml \
     --stack-name $STACK_NAME \
     --s3-bucket $BUCKET_NAME \
     --capabilities CAPABILITY_IAM \
     --region $REGION \
-    --confirm-changeset
+    --confirm-changeset \
+    --no-fail-on-empty-changeset \
+    --resolve-image-repos
 
 # API Gateway URLを取得
 echo "=== デプロイ完了 ==="
