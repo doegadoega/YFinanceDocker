@@ -345,9 +345,9 @@ def main():
         print(f"検出されたエンドポイント数: {len(generator.endpoints)}")
         print(f"エンドポイント: {list(generator.endpoints.keys())}")
         
-        # コンソールにも表示
-        print("\n=== 自動生成されたSwagger仕様書 ===")
-        print(json.dumps(swagger, indent=2, ensure_ascii=False))
+        # # コンソールにも表示
+        # print("\n=== 自動生成されたSwagger仕様書 ===")
+        # print(json.dumps(swagger, indent=2, ensure_ascii=False))
         
     except Exception as e:
         print(f"エラー: {e}")

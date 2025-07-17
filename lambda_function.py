@@ -1,9 +1,58 @@
 import json
-import yfinance as yfy
+import yfinance as yf
 from datetime import datetime
 import traceback
 import os
+import pandas as pd
+import numpy as np
 
+def serialize_for_json(obj):
+    """オブジェクトをJSON serializable に変換"""
+    if pd.isna(obj) or obj is None:
+        return None
+    elif isinstance(obj, (pd.Timestamp, datetime)):
+        return obj.strftime('%Y-%m-%d') if hasattr(obj, 'strftime') else str(obj)
+    elif isinstance(obj, (np.integer, np.int64)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {str(k): serialize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [serialize_for_json(item) for item in obj]
+    elif hasattr(obj, 'to_dict'):
+        return serialize_for_json(obj.to_dict())
+    else:
+        return obj
+
+def safe_dataframe_to_dict(df):
+    """DataFrameを安全にdictに変換（JSON serializable）"""
+    if df.empty:
+        return {}
+    try:
+        # インデックスを文字列に変換してから辞書化
+        df_copy = df.copy()
+        if hasattr(df_copy.index, 'strftime'):
+            df_copy.index = df_copy.index.strftime('%Y-%m-%d')
+        else:
+            df_copy.index = df_copy.index.astype(str)
+        
+        result = df_copy.to_dict()
+        return serialize_for_json(result)
+    except Exception as e:
+        return f"DataFrame変換エラー: {str(e)}"
+
+def safe_dataframe_to_records(df):
+    """DataFrameを安全にrecordsに変換（JSON serializable）"""
+    if df.empty:
+        return []
+    try:
+        records = df.to_dict('records')
+        return serialize_for_json(records)
+    except Exception as e:
+        return f"Records変換エラー: {str(e)}"
 
 def lambda_handler(event, context):
     """
@@ -54,15 +103,6 @@ def lambda_handler(event, context):
                     'body': json.dumps({'error': '検索クエリが必要です'})
                 }
             result = search_stocks_api(query, query_parameters)
-        elif '/price' in resource:
-            ticker = query_parameters.get('ticker', '').upper()
-            if not ticker:
-                return {
-                    'statusCode': 400,
-                    'headers': headers,
-                    'body': json.dumps({'error': 'ティッカーシンボルが必要です'})
-                }
-            result = get_stock_price_api(ticker)
         elif '/info' in resource:
             ticker = query_parameters.get('ticker', '').upper()
             if not ticker:
@@ -71,8 +111,10 @@ def lambda_handler(event, context):
                     'headers': headers,
                     'body': json.dumps({'error': 'ティッカーシンボルが必要です'})
                 }
-            result = get_stock_info_api(ticker)
-        elif '/history' in resource:
+            # periodパラメータも受け取る（history用）
+            period = query_parameters.get('period', '1mo')
+            result = get_stock_info_api(ticker, period)
+        elif '/chart' in resource:
             ticker = query_parameters.get('ticker', '').upper()
             if not ticker:
                 return {
@@ -81,52 +123,25 @@ def lambda_handler(event, context):
                     'body': json.dumps({'error': 'ティッカーシンボルが必要です'})
                 }
             period = query_parameters.get('period', '1mo')
-            result = get_stock_history_api(ticker, period)
-        elif '/news' in resource:
-            ticker = query_parameters.get('ticker', '').upper()
-            if not ticker:
+            size = query_parameters.get('size', '800x400')
+            chart_type = query_parameters.get('type', 'line')
+            # 画像はBase64バイナリで返却
+            chart_base64, err = get_stock_chart_api(ticker, period, size, chart_type)
+            if err:
                 return {
-                    'statusCode': 400,
+                    'statusCode': 500,
                     'headers': headers,
-                    'body': json.dumps({'error': 'ティッカーシンボルが必要です'})
+                    'body': json.dumps({'error': err})
                 }
-            result = get_stock_news_api(ticker)
-        elif '/dividends' in resource:
-            ticker = query_parameters.get('ticker', '').upper()
-            if not ticker:
-                return {
-                    'statusCode': 400,
-                    'headers': headers,
-                    'body': json.dumps({'error': 'ティッカーシンボルが必要です'})
-                }
-            result = get_stock_dividends_api(ticker)
-        elif '/options' in resource:
-            ticker = query_parameters.get('ticker', '').upper()
-            if not ticker:
-                return {
-                    'statusCode': 400,
-                    'headers': headers,
-                    'body': json.dumps({'error': 'ティッカーシンボルが必要です'})
-                }
-            result = get_stock_options_api(ticker)
-        elif '/financials' in resource:
-            ticker = query_parameters.get('ticker', '').upper()
-            if not ticker:
-                return {
-                    'statusCode': 400,
-                    'headers': headers,
-                    'body': json.dumps({'error': 'ティッカーシンボルが必要です'})
-                }
-            result = get_stock_financials_api(ticker)
-        elif '/analysts' in resource:
-            ticker = query_parameters.get('ticker', '').upper()
-            if not ticker:
-                return {
-                    'statusCode': 400,
-                    'headers': headers,
-                    'body': json.dumps({'error': 'ティッカーシンボルが必要です'})
-                }
-            result = get_stock_analysts_api(ticker)
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'image/png',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': chart_base64,
+                'isBase64Encoded': True
+            }
         else:
             return {
                 'statusCode': 404,
@@ -144,7 +159,7 @@ def lambda_handler(event, context):
         return {
             'statusCode': 200,
             'headers': headers,
-            'body': json.dumps(result)
+            'body': json.dumps(result, default=serialize_for_json)
         }
         
     except Exception as e:
@@ -269,312 +284,316 @@ def search_stocks_api(query, query_parameters):
         return {'error': f'検索エラー: {str(e)}'}
 
 
-def get_stock_price_api(ticker):
-    """現在の株価を取得（API用）"""
+def get_stock_info_api(ticker, period='1mo'):
+    """銘柄の全情報をまとめて返すAPI（新yfinance API使用）"""
     try:
         stock = yf.Ticker(ticker)
-        info = stock.info
-        current_price = info.get('currentPrice', info.get('regularMarketPrice'))
-        
-        if current_price is None:
-            return {'error': f'株価データが取得できませんでした: {ticker}'}
-        
-        return {
-            'ticker': ticker,
-            'current_price': current_price,
-            'currency': info.get('currency', 'USD'),
-            'timestamp': datetime.now().isoformat()
-        }
-    except Exception as e:
-        return {'error': f'株価取得エラー: {str(e)}'}
 
+        # 新API: 詳細情報
+        try:
+            info = stock.get_info()
+        except Exception as e:
+            info = {}
+            info_error = str(e)
+        else:
+            info_error = None
 
-def get_stock_info_api(ticker):
-    """株式情報を取得（API用）"""
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        
-        result = {
-            'ticker': ticker,
-            'name': info.get('longName', 'N/A'),
-            'current_price': info.get('currentPrice', info.get('regularMarketPrice')),
-            'previous_close': info.get('previousClose'),
-            'market_cap': info.get('marketCap'),
-            'dividend_yield': info.get('dividendYield'),
-            'trailing_pe': info.get('trailingPE'),
-            'fifty_two_week_high': info.get('fiftyTwoWeekHigh'),
-            'fifty_two_week_low': info.get('fiftyTwoWeekLow'),
-            'currency': info.get('currency', 'USD'),
-            'exchange': info.get('exchange'),
-            'sector': info.get('sector'),
-            'industry': info.get('industry'),
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        return result
-    except Exception as e:
-        return {'error': f'株式情報取得エラー: {str(e)}'}
+        # 高速基本情報
+        try:
+            fast_info = stock.get_fast_info()
+            # FastInfoオブジェクトを辞書に変換
+            if hasattr(fast_info, '__dict__'):
+                fast_info_dict = {}
+                for key in dir(fast_info):
+                    if not key.startswith('_') and not callable(getattr(fast_info, key)):
+                        try:
+                            value = getattr(fast_info, key)
+                            if value is not None:
+                                fast_info_dict[key] = float(value) if isinstance(value, (int, float)) else str(value)
+                        except:
+                            pass
+                fast_info = fast_info_dict
+            else:
+                fast_info = {}
+        except Exception as e:
+            fast_info = {}
 
+        # ロゴURL
+        logo_url = info.get('logo_url') if info else None
+        if not logo_url:
+            website = info.get('website') if info else None
+            if website:
+                import re
+                m = re.search(r'https?://([^/]+)', website)
+                if m:
+                    logo_url = f"https://logo.clearbit.com/{m.group(1)}"
 
-def get_stock_history_api(ticker, period='1mo'):
-    """株価履歴を取得（API用）"""
-    try:
-        # 期間の妥当性チェック
-        valid_periods = ['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max']
-        if period not in valid_periods:
-            period = '1mo'
-        
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period=period)
-        
-        if len(hist) == 0:
-            return {'error': f'履歴データが取得できませんでした: {ticker}'}
-        
-        # 履歴データを手動で変換
-        history_data = []
-        for i in range(len(hist)):
-            date = hist.index[i]
-            row = hist.iloc[i]
-            history_data.append({
-                'date': date.strftime('%Y-%m-%d'),
+        # 株価情報
+        current_price = fast_info.get('last_price') or info.get('currentPrice') if info else None
+        previous_close = fast_info.get('previous_close') or info.get('previousClose') if info else None
+        price = None
+        if current_price is not None:
+            price = {
+                'current_price': round(float(current_price), 2),
+                'currency': fast_info.get('financial_currency') or info.get('currency', 'USD') if info else 'USD',
+                'timestamp': datetime.now().isoformat()
+            }
+            if previous_close is not None:
+                previous_close = float(previous_close)
+                diff = current_price - previous_close
+                price['previous_close'] = round(previous_close, 2)
+                price['price_change'] = round(diff, 2)
+                price['price_change_percent'] = round(diff / previous_close * 100, 2)
+                price['price_change_direction'] = 'up' if diff > 0 else 'down' if diff < 0 else 'unchanged'
+
+        # 履歴（期間をパラメータで指定可能）
+        try:
+            valid_periods = ['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max']
+            if period not in valid_periods:
+                period = '1mo'
+            
+            hist_df = stock.history(period=period)
+            history = [{
+                'date': idx.strftime('%Y-%m-%d'),
                 'open': round(float(row['Open']), 2),
                 'high': round(float(row['High']), 2),
                 'low': round(float(row['Low']), 2),
                 'close': round(float(row['Close']), 2),
                 'volume': int(row['Volume'])
-            })
-        
-        return {
-            'ticker': ticker,
-            'period': period,
-            'data': history_data,
-            'count': len(history_data),
-            'timestamp': datetime.now().isoformat()
-        }
-    except Exception as e:
-        return {'error': f'履歴データ取得エラー: {str(e)}'}
+            } for idx, row in hist_df.iterrows()]
+        except Exception as e:
+            history = f'履歴データ取得エラー: {str(e)}'
 
+        # ニュース
+        try:
+            news = stock.get_news() or []
+        except Exception as e:
+            news = f'ニュース取得エラー: {str(e)}'
 
-def get_stock_news_api(ticker):
-    """株式ニュースを取得（API用）"""
-    try:
-        stock = yf.Ticker(ticker)
-        news = stock.news
+        # 配当
+        try:
+            dividends_series = stock.get_dividends()
+            dividends = [{
+                'date': idx.strftime('%Y-%m-%d'),
+                'amount': float(val)
+            } for idx, val in dividends_series.items()] if not dividends_series.empty else []
+        except Exception as e:
+            dividends = f'配当情報取得エラー: {str(e)}'
+
+        # オプション（従来通り）
+        try:
+            options_dates = stock.options
+            if options_dates:
+                expiry = options_dates[0]
+                chain = stock.option_chain(expiry)
+                calls_data = [{
+                    'strike': float(r['strike']),
+                    'last_price': float(r['lastPrice']),
+                    'bid': float(r['bid']),
+                    'ask': float(r['ask']),
+                    'volume': int(r['volume']),
+                    'open_interest': int(r['openInterest'])
+                } for _, r in chain.calls.iterrows()]
+                puts_data = [{
+                    'strike': float(r['strike']),
+                    'last_price': float(r['lastPrice']),
+                    'bid': float(r['bid']),
+                    'ask': float(r['ask']),
+                    'volume': int(r['volume']),
+                    'open_interest': int(r['openInterest'])
+                } for _, r in chain.puts.iterrows()]
+                options_data = {'expiry_date': expiry, 'calls': calls_data, 'puts': puts_data}
+            else:
+                options_data = []
+        except Exception as e:
+            options_data = f'オプション情報取得エラー: {str(e)}'
+
+        # === 新しいYFinanceメソッド群 ===
         
-        if not news:
-            return {
-                'ticker': ticker,
-                'news': [],
-                'count': 0,
-                'message': f'{ticker}に関するニュースが見つかりませんでした',
-                'timestamp': datetime.now().isoformat()
+        # ISIN（国際証券識別番号）
+        try:
+            isin = stock.get_isin()
+        except Exception as e:
+            isin = f'ISIN取得エラー: {str(e)}'
+
+        # アナリスト推奨履歴
+        try:
+            recommendations = stock.get_recommendations()
+            if not recommendations.empty:
+                recommendations_data = safe_dataframe_to_records(recommendations)
+            else:
+                recommendations_data = []
+        except Exception as e:
+            recommendations_data = f'推奨履歴取得エラー: {str(e)}'
+
+        # カレンダー（決算日など）
+        try:
+            calendar = stock.get_calendar()
+            if not calendar.empty:
+                calendar_data = safe_dataframe_to_records(calendar)
+            else:
+                calendar_data = []
+        except Exception as e:
+            calendar_data = f'カレンダー取得エラー: {str(e)}'
+
+        # 決算日
+        try:
+            earnings_dates = stock.get_earnings_dates()
+            if not earnings_dates.empty:
+                earnings_dates_data = safe_dataframe_to_records(earnings_dates)
+            else:
+                earnings_dates_data = []
+        except Exception as e:
+            earnings_dates_data = f'決算日取得エラー: {str(e)}'
+
+        # 財務諸表（新メソッド使用）
+        try:
+            # 損益計算書
+            income_stmt = stock.get_income_stmt()
+            if not income_stmt.empty:
+                income_stmt_data = safe_dataframe_to_dict(income_stmt)
+            else:
+                income_stmt_data = {}
+            
+            # 貸借対照表
+            balance_sheet = stock.get_balance_sheet()
+            if not balance_sheet.empty:
+                balance_sheet_data = safe_dataframe_to_dict(balance_sheet)
+            else:
+                balance_sheet_data = {}
+            
+            # キャッシュフロー
+            cashflow = stock.get_cashflow()
+            if not cashflow.empty:
+                cashflow_data = safe_dataframe_to_dict(cashflow)
+            else:
+                cashflow_data = {}
+                
+            financials = {
+                'income_statement': income_stmt_data,
+                'balance_sheet': balance_sheet_data,
+                'cashflow': cashflow_data
             }
-        
-        # ニュースデータを整理
-        news_data = []
-        for article in news:
-            news_data.append({
-                'title': article.get('title', ''),
-                'summary': article.get('summary', ''),
-                'link': article.get('link', ''),
-                'publisher': article.get('publisher', ''),
-                'published': article.get('providerPublishTime', ''),
-                'type': article.get('type', ''),
-                'uuid': article.get('uuid', '')
-            })
-        
-        return {
-            'ticker': ticker,
-            'news': news_data,
-            'count': len(news_data),
-            'timestamp': datetime.now().isoformat()
-        }
-    except Exception as e:
-        return {'error': f'ニュース取得エラー: {str(e)}'}
+        except Exception as e:
+            financials = f'財務情報取得エラー: {str(e)}'
 
+        # ESG情報
+        try:
+            sustainability = stock.get_sustainability()
+            if not sustainability.empty:
+                sustainability_data = safe_dataframe_to_dict(sustainability)
+            else:
+                sustainability_data = {}
+        except Exception as e:
+            sustainability_data = f'ESG情報取得エラー: {str(e)}'
 
-def get_stock_dividends_api(ticker):
-    """配当情報を取得（API用）"""
-    try:
-        stock = yf.Ticker(ticker)
-        dividends = stock.dividends
-        
-        if len(dividends) == 0:
-            return {
-                'ticker': ticker,
-                'dividends': [],
-                'count': 0,
-                'message': f'{ticker}の配当情報が見つかりませんでした',
-                'timestamp': datetime.now().isoformat()
+        # 株主情報
+        try:
+            # 大株主
+            major_holders = stock.get_major_holders()
+            if not major_holders.empty:
+                major_holders_data = safe_dataframe_to_records(major_holders)
+            else:
+                major_holders_data = []
+                
+            # 機関投資家
+            institutional_holders = stock.get_institutional_holders()
+            if not institutional_holders.empty:
+                institutional_holders_data = safe_dataframe_to_records(institutional_holders)
+            else:
+                institutional_holders_data = []
+                
+            # 投資信託
+            mutualfund_holders = stock.get_mutualfund_holders()
+            if not mutualfund_holders.empty:
+                mutualfund_holders_data = safe_dataframe_to_records(mutualfund_holders)
+            else:
+                mutualfund_holders_data = []
+                
+            holders_data = {
+                'major_holders': major_holders_data,
+                'institutional_holders': institutional_holders_data,
+                'mutualfund_holders': mutualfund_holders_data
             }
-        
-        # 配当データを整理
-        dividend_data = []
-        for date, amount in dividends.items():
-            dividend_data.append({
-                'date': date.strftime('%Y-%m-%d'),
-                'amount': float(amount)
-            })
-        
-        return {
-            'ticker': ticker,
-            'dividends': dividend_data,
-            'count': len(dividend_data),
-            'timestamp': datetime.now().isoformat()
-        }
-    except Exception as e:
-        return {'error': f'配当情報取得エラー: {str(e)}'}
+        except Exception as e:
+            holders_data = f'株主情報取得エラー: {str(e)}'
 
+        # 株式数詳細
+        try:
+            shares = stock.get_shares()
+            if not shares.empty:
+                shares_data = safe_dataframe_to_dict(shares)
+            else:
+                shares_data = {}
+        except Exception as e:
+            shares_data = f'株式数取得エラー: {str(e)}'
 
-def get_stock_options_api(ticker):
-    """オプション情報を取得（API用）"""
-    try:
-        stock = yf.Ticker(ticker)
-        
-        # 次のオプション満期日を取得
-        options = stock.options
-        
-        if not options:
-            return {
-                'ticker': ticker,
-                'options': [],
-                'count': 0,
-                'message': f'{ticker}のオプション情報が見つかりませんでした',
-                'timestamp': datetime.now().isoformat()
-            }
-        
-        # 最新のオプション満期日の情報を取得
-        latest_expiry = options[0]
-        calls = stock.option_chain(latest_expiry).calls
-        puts = stock.option_chain(latest_expiry).puts
-        
-        # コールオプションを整理
-        calls_data = []
-        for _, call in calls.iterrows():
-            calls_data.append({
-                'strike': float(call['strike']),
-                'last_price': float(call['lastPrice']),
-                'bid': float(call['bid']),
-                'ask': float(call['ask']),
-                'volume': int(call['volume']),
-                'open_interest': int(call['openInterest'])
-            })
-        
-        # プットオプションを整理
-        puts_data = []
-        for _, put in puts.iterrows():
-            puts_data.append({
-                'strike': float(put['strike']),
-                'last_price': float(put['lastPrice']),
-                'bid': float(put['bid']),
-                'ask': float(put['ask']),
-                'volume': int(put['volume']),
-                'open_interest': int(put['openInterest'])
-            })
-        
-        return {
-            'ticker': ticker,
-            'expiry_date': latest_expiry,
-            'calls': calls_data,
-            'puts': puts_data,
-            'calls_count': len(calls_data),
-            'puts_count': len(puts_data),
-            'timestamp': datetime.now().isoformat()
-        }
-    except Exception as e:
-        return {'error': f'オプション情報取得エラー: {str(e)}'}
+        # アナリスト分析
+        try:
+            analysis = stock.get_analysis()
+            if not analysis.empty:
+                analysis_data = safe_dataframe_to_dict(analysis)
+            else:
+                analysis_data = {}
+        except Exception as e:
+            analysis_data = f'アナリスト分析取得エラー: {str(e)}'
 
+        # 格付け変更履歴
+        try:
+            upgrades_downgrades = stock.get_upgrades_downgrades()
+            if not upgrades_downgrades.empty:
+                upgrades_downgrades_data = safe_dataframe_to_records(upgrades_downgrades)
+            else:
+                upgrades_downgrades_data = []
+        except Exception as e:
+            upgrades_downgrades_data = f'格付け変更履歴取得エラー: {str(e)}'
 
-def get_stock_financials_api(ticker):
-    """財務情報を取得（API用）"""
-    try:
-        stock = yf.Ticker(ticker)
-        
-        # 財務諸表を取得
-        income_stmt = stock.income_stmt
-        balance_sheet = stock.balance_sheet
-        cash_flow = stock.cashflow
-        
+        # アナリスト予想（従来）
+        try:
+            analysts = {}
+            if info:
+                if 'recommendationMean' in info:
+                    analysts['recommendation_mean'] = info['recommendationMean']
+                if 'targetMeanPrice' in info:
+                    analysts['target_mean_price'] = info['targetMeanPrice']
+                if 'numberOfAnalystOpinions' in info:
+                    analysts['number_of_analysts'] = info['numberOfAnalystOpinions']
+                keys = ['strongBuy', 'buy', 'hold', 'sell', 'strongSell']
+                ratings = {k: info[k] for k in keys if k in info}
+                if ratings:
+                    analysts['rating_distribution'] = ratings
+        except Exception as e:
+            analysts = f'アナリスト予想取得エラー: {str(e)}'
+
         result = {
             'ticker': ticker,
+            'info': info,
+            'info_error': info_error,
+            'fast_info': fast_info,
+            'logo_url': logo_url,
+            'price': price,
+            'history': history,
+            'news': news,
+            'dividends': dividends,
+            'options': options_data,
+            'financials': financials,
+            'analysts': analysts,
+            # 新しいYFinanceメソッド
+            'isin': isin,
+            'recommendations': recommendations_data,
+            'calendar': calendar_data,
+            'earnings_dates': earnings_dates_data,
+            'sustainability': sustainability_data,
+            'holders': holders_data,
+            'shares': shares_data,
+            'analysis': analysis_data,
+            'upgrades_downgrades': upgrades_downgrades_data,
             'timestamp': datetime.now().isoformat()
         }
-        
-        # 損益計算書の最新データ
-        if not income_stmt.empty:
-            latest_income = income_stmt.iloc[:, 0]  # 最新の年度
-            result['income_statement'] = {
-                'total_revenue': float(latest_income.get('Total Revenue', 0)),
-                'gross_profit': float(latest_income.get('Gross Profit', 0)),
-                'operating_income': float(latest_income.get('Operating Income', 0)),
-                'net_income': float(latest_income.get('Net Income', 0)),
-                'eps': float(latest_income.get('Basic EPS', 0))
-            }
-        
-        # 貸借対照表の最新データ
-        if not balance_sheet.empty:
-            latest_balance = balance_sheet.iloc[:, 0]  # 最新の年度
-            result['balance_sheet'] = {
-                'total_assets': float(latest_balance.get('Total Assets', 0)),
-                'total_liabilities': float(latest_balance.get('Total Liabilities Net Minority Interest', 0)),
-                'total_equity': float(latest_balance.get('Total Equity Gross Minority Interest', 0)),
-                'cash': float(latest_balance.get('Cash and Cash Equivalents', 0)),
-                'debt': float(latest_balance.get('Total Debt', 0))
-            }
-        
-        # キャッシュフロー計算書の最新データ
-        if not cash_flow.empty:
-            latest_cashflow = cash_flow.iloc[:, 0]  # 最新の年度
-            result['cash_flow'] = {
-                'operating_cash_flow': float(latest_cashflow.get('Operating Cash Flow', 0)),
-                'investing_cash_flow': float(latest_cashflow.get('Investing Cash Flow', 0)),
-                'financing_cash_flow': float(latest_cashflow.get('Financing Cash Flow', 0)),
-                'free_cash_flow': float(latest_cashflow.get('Free Cash Flow', 0))
-            }
-        
         return result
     except Exception as e:
-        return {'error': f'財務情報取得エラー: {str(e)}'}
+        return {'error': f'銘柄情報取得エラー: {str(e)}'}
 
-
-def get_stock_analysts_api(ticker):
-    """アナリスト予想を取得（API用）"""
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        
-        # アナリスト予想情報を抽出
-        analyst_info = {
-            'ticker': ticker,
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        # 推奨レーティング
-        if 'recommendationMean' in info:
-            analyst_info['recommendation_mean'] = info['recommendationMean']
-        
-        # 目標株価
-        if 'targetMeanPrice' in info:
-            analyst_info['target_mean_price'] = info['targetMeanPrice']
-        
-        # アナリスト数
-        if 'numberOfAnalystOpinions' in info:
-            analyst_info['number_of_analysts'] = info['numberOfAnalystOpinions']
-        
-        # 推奨レーティング分布
-        rating_keys = ['strongBuy', 'buy', 'hold', 'sell', 'strongSell']
-        ratings = {}
-        for key in rating_keys:
-            if key in info:
-                ratings[key] = info[key]
-        
-        if ratings:
-            analyst_info['rating_distribution'] = ratings
-        
-        return analyst_info
-    except Exception as e:
-        return {'error': f'アナリスト予想取得エラー: {str(e)}'}
 
 
 def get_api_gateway_url(event=None, context=None):
@@ -648,203 +667,6 @@ def generate_swagger_ui_html(event=None, context=None):
             }
         ],
         "paths": {
-            "/price": {
-                "get": {
-                    "summary": "株価取得",
-                    "description": "指定されたティッカーシンボルの現在の株価を取得します",
-                    "parameters": [
-                        {
-                            "name": "ticker",
-                            "in": "query",
-                            "required": True,
-                            "description": "ティッカーシンボル（例: AAPL, MSFT, 7203.T）",
-                            "schema": {"type": "string"}
-                        }
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "成功",
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "symbol": {
-                                                "type": "string", 
-                                                "example": "AAPL",
-                                                "description": "ティッカーシンボル"
-                                            },
-                                            "price": {
-                                                "type": "number", 
-                                                "example": 208.62,
-                                                "description": "現在の株価"
-                                            },
-                                            "currency": {
-                                                "type": "string", 
-                                                "example": "USD",
-                                                "description": "通貨単位（USD: 米ドル, JPY: 日本円）"
-                                            },
-                                            "timestamp": {
-                                                "type": "string", 
-                                                "format": "date-time",
-                                                "description": "データ取得時刻（ISO 8601形式）"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "/info": {
-                "get": {
-                    "summary": "詳細情報取得",
-                    "description": "指定されたティッカーシンボルの詳細な企業情報を取得します",
-                    "parameters": [
-                        {
-                            "name": "ticker",
-                            "in": "query",
-                            "required": True,
-                            "description": "ティッカーシンボル（例: AAPL, MSFT, 7203.T）",
-                            "schema": {"type": "string"}
-                        }
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "成功",
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "symbol": {
-                                                "type": "string", 
-                                                "example": "AAPL",
-                                                "description": "ティッカーシンボル"
-                                            },
-                                            "name": {
-                                                "type": "string", 
-                                                "example": "Apple Inc.",
-                                                "description": "企業の正式名称"
-                                            },
-                                            "currentPrice": {
-                                                "type": "number", 
-                                                "example": 208.62,
-                                                "description": "現在の株価"
-                                            },
-                                            "previousClose": {
-                                                "type": "number", 
-                                                "example": 211.16,
-                                                "description": "前営業日の終値"
-                                            },
-                                            "marketCap": {
-                                                "type": "number", 
-                                                "example": 3115906498560,
-                                                "description": "時価総額（発行済み株式総数 × 株価）"
-                                            },
-                                            "dividendYield": {
-                                                "type": "number", 
-                                                "example": 0.51,
-                                                "description": "配当利回り（年間配当金 ÷ 株価 × 100）"
-                                            },
-                                            "trailingPE": {
-                                                "type": "number", 
-                                                "example": 32.44,
-                                                "description": "P/E比率（株価収益率 = 株価 ÷ 1株当たり利益）"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "/history": {
-                "get": {
-                    "summary": "株価履歴取得",
-                    "description": "指定されたティッカーシンボルの株価履歴データを取得します",
-                    "parameters": [
-                        {
-                            "name": "ticker",
-                            "in": "query",
-                            "required": True,
-                            "description": "ティッカーシンボル（例: AAPL, MSFT, 7203.T）",
-                            "schema": {"type": "string"}
-                        },
-                        {
-                            "name": "period",
-                            "in": "query",
-                            "required": False,
-                            "description": "期間（デフォルト: 1mo）",
-                            "schema": {
-                                "type": "string",
-                                "enum": ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"],
-                                "default": "1mo"
-                            }
-                        }
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "成功",
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "symbol": {
-                                                "type": "string", 
-                                                "example": "AAPL",
-                                                "description": "ティッカーシンボル"
-                                            },
-                                            "period": {
-                                                "type": "string", 
-                                                "example": "1mo",
-                                                "description": "取得期間（1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max）"
-                                            },
-                                            "data": {
-                                                "type": "object",
-                                                "description": "日別の株価データ（日付をキーとするオブジェクト）",
-                                                "additionalProperties": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "Open": {
-                                                            "type": "number", 
-                                                            "example": 209.93,
-                                                            "description": "始値（その日の最初の取引価格）"
-                                                        },
-                                                        "High": {
-                                                            "type": "number", 
-                                                            "example": 210.91,
-                                                            "description": "高値（その日の最高取引価格）"
-                                                        },
-                                                        "Low": {
-                                                            "type": "number", 
-                                                            "example": 207.54,
-                                                            "description": "安値（その日の最低取引価格）"
-                                                        },
-                                                        "Close": {
-                                                            "type": "number", 
-                                                            "example": 208.62,
-                                                            "description": "終値（その日の最後の取引価格）"
-                                                        },
-                                                        "Volume": {
-                                                            "type": "number", 
-                                                            "example": 38711400,
-                                                            "description": "出来高（その日の取引量）"
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
             "/search": {
                 "get": {
                     "summary": "銘柄検索",
@@ -861,7 +683,7 @@ def generate_swagger_ui_html(event=None, context=None):
                             "name": "limit",
                             "in": "query",
                             "required": False,
-                            "description": "検索結果件数（最大10件、デフォルト: 10）",
+                            "description": "検索結果件数（デフォルト: 10、最大: 10）",
                             "schema": {"type": "integer", "default": 10, "maximum": 10}
                         },
                         {
@@ -888,17 +710,12 @@ def generate_swagger_ui_html(event=None, context=None):
                                             "region": {
                                                 "type": "string", 
                                                 "example": "US",
-                                                "description": "検索リージョン（US: 米国, JP: 日本）"
+                                                "description": "検索リージョン"
                                             },
                                             "count": {
                                                 "type": "integer", 
                                                 "example": 7,
                                                 "description": "検索結果件数"
-                                            },
-                                            "max_results": {
-                                                "type": "integer", 
-                                                "example": 10,
-                                                "description": "最大検索結果件数"
                                             },
                                             "results": {
                                                 "type": "array",
@@ -916,71 +733,15 @@ def generate_swagger_ui_html(event=None, context=None):
                                                             "example": "Apple Inc.",
                                                             "description": "企業名"
                                                         },
-                                                        "exchange": {
-                                                            "type": "string", 
-                                                            "example": "NMS",
-                                                            "description": "取引所（NMS: NASDAQ, NYQ: NYSE, TYO: 東京証券取引所）"
-                                                        },
-                                                        "type": {
-                                                            "type": "string", 
-                                                            "example": "Equity",
-                                                            "description": "証券の種類（Equity: 株式）"
-                                                        },
-                                                        "score": {
-                                                            "type": "number", 
-                                                            "example": 31292.0,
-                                                            "description": "検索スコア（関連度、数値が高いほど関連性が高い）"
-                                                        },
                                                         "current_price": {
                                                             "type": "number", 
                                                             "example": 208.62,
                                                             "description": "現在の株価"
                                                         },
-                                                        "previous_close": {
-                                                            "type": "number", 
-                                                            "example": 211.16,
-                                                            "description": "前営業日の終値"
-                                                        },
-                                                        "price_change": {
-                                                            "type": "number", 
-                                                            "example": -2.54,
-                                                            "description": "前日との価格差"
-                                                        },
-                                                        "price_change_percent": {
-                                                            "type": "number", 
-                                                            "example": -1.20,
-                                                            "description": "前日との価格変化率（%）"
-                                                        },
                                                         "price_change_direction": {
                                                             "type": "string", 
-                                                            "example": "down",
-                                                            "description": "価格変化の方向（up: 上昇, down: 下落, unchanged: 変化なし）"
-                                                        },
-                                                        "currency": {
-                                                            "type": "string", 
-                                                            "example": "USD",
-                                                            "description": "通貨単位"
-                                                        },
-                                                        "market_cap": {
-                                                            "type": "number", 
-                                                            "example": 3115906498560,
-                                                            "description": "時価総額"
-                                                        },
-                                                        "volume": {
-                                                            "type": "number", 
-                                                            "example": 38711400,
-                                                            "description": "当日の出来高"
-                                                        },
-                                                        "avg_volume": {
-                                                            "type": "number", 
-                                                            "example": 45678900,
-                                                            "description": "平均出来高"
-                                                        },
-                                                        "timestamp": {
-                                                            "type": "string", 
-                                                            "format": "date-time",
-                                                            "example": "2024-01-15T10:30:00",
-                                                            "description": "データ取得時刻"
+                                                            "example": "up",
+                                                            "description": "価格変化の方向"
                                                         }
                                                     }
                                                 }
@@ -993,10 +754,10 @@ def generate_swagger_ui_html(event=None, context=None):
                     }
                 }
             },
-            "/news": {
+            "/info": {
                 "get": {
-                    "summary": "ニュース取得",
-                    "description": "指定されたティッカーシンボルに関連する最新ニュースを取得します",
+                    "summary": "詳細情報取得（統合版）",
+                    "description": "指定されたティッカーシンボルの全ての情報を統合して取得します（価格、履歴、ニュース、配当、オプション、財務、ESG、株主情報など）",
                     "parameters": [
                         {
                             "name": "ticker",
@@ -1004,6 +765,17 @@ def generate_swagger_ui_html(event=None, context=None):
                             "required": True,
                             "description": "ティッカーシンボル（例: AAPL, MSFT, 7203.T）",
                             "schema": {"type": "string"}
+                        },
+                        {
+                            "name": "period",
+                            "in": "query",
+                            "required": False,
+                            "description": "履歴期間（デフォルト: 1mo）",
+                            "schema": {
+                                "type": "string",
+                                "enum": ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"],
+                                "default": "1mo"
+                            }
                         }
                     ],
                     "responses": {
@@ -1014,264 +786,87 @@ def generate_swagger_ui_html(event=None, context=None):
                                     "schema": {
                                         "type": "object",
                                         "properties": {
-                                            "symbol": {
+                                            "ticker": {
                                                 "type": "string", 
                                                 "example": "AAPL",
                                                 "description": "ティッカーシンボル"
+                                            },
+                                            "info": {
+                                                "type": "object",
+                                                "description": "企業基本情報"
+                                            },
+                                            "fast_info": {
+                                                "type": "object",
+                                                "description": "高速取得情報"
+                                            },
+                                            "price": {
+                                                "type": "object",
+                                                "description": "株価情報"
+                                            },
+                                            "history": {
+                                                "type": "array",
+                                                "description": "株価履歴"
                                             },
                                             "news": {
                                                 "type": "array",
-                                                "description": "ニュース記事の配列",
-                                                "items": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "title": {
-                                                            "type": "string", 
-                                                            "example": "Apple Reports Record Q4 Earnings",
-                                                            "description": "ニュース記事のタイトル"
-                                                        },
-                                                        "link": {
-                                                            "type": "string", 
-                                                            "example": "https://example.com/news/1",
-                                                            "description": "ニュース記事のURL"
-                                                        },
-                                                        "publisher": {
-                                                            "type": "string", 
-                                                            "example": "Reuters",
-                                                            "description": "ニュース配信元"
-                                                        },
-                                                        "published": {
-                                                            "type": "string", 
-                                                            "format": "date-time",
-                                                            "description": "配信日時"
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "/dividends": {
-                "get": {
-                    "summary": "配当情報取得",
-                    "description": "指定されたティッカーシンボルの配当情報を取得します",
-                    "parameters": [
-                        {
-                            "name": "ticker",
-                            "in": "query",
-                            "required": True,
-                            "description": "ティッカーシンボル（例: AAPL, MSFT, 7203.T）",
-                            "schema": {"type": "string"}
-                        }
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "成功",
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "symbol": {
-                                                "type": "string", 
-                                                "example": "AAPL",
-                                                "description": "ティッカーシンボル"
+                                                "description": "関連ニュース"
                                             },
-                                            "dividendYield": {
-                                                "type": "number", 
-                                                "example": 0.51,
-                                                "description": "配当利回り（%）"
-                                            },
-                                            "dividendRate": {
-                                                "type": "number", 
-                                                "example": 0.96,
-                                                "description": "年間配当金"
-                                            },
-                                            "payoutRatio": {
-                                                "type": "number", 
-                                                "example": 0.16,
-                                                "description": "配当性向（利益に対する配当の割合）"
-                                            },
-                                            "exDividendDate": {
-                                                "type": "string", 
-                                                "format": "date",
-                                                "example": "2024-11-08",
-                                                "description": "配当権利確定日"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "/options": {
-                "get": {
-                    "summary": "オプション情報取得",
-                    "description": "指定されたティッカーシンボルのオプション情報を取得します",
-                    "parameters": [
-                        {
-                            "name": "ticker",
-                            "in": "query",
-                            "required": True,
-                            "description": "ティッカーシンボル（例: AAPL, MSFT, 7203.T）",
-                            "schema": {"type": "string"}
-                        }
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "成功",
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "symbol": {
-                                                "type": "string", 
-                                                "example": "AAPL",
-                                                "description": "ティッカーシンボル"
-                                            },
-                                            "currentPrice": {
-                                                "type": "number", 
-                                                "example": 208.62,
-                                                "description": "現在の株価"
+                                            "dividends": {
+                                                "type": "array",
+                                                "description": "配当履歴"
                                             },
                                             "options": {
                                                 "type": "object",
-                                                "description": "オプション情報",
-                                                "properties": {
-                                                    "calls": {
-                                                        "type": "array",
-                                                        "description": "コールオプション情報",
-                                                        "items": {
-                                                            "type": "object",
-                                                            "properties": {
-                                                                "strike": {
-                                                                    "type": "number", 
-                                                                    "example": 200,
-                                                                    "description": "行使価格"
-                                                                },
-                                                                "lastPrice": {
-                                                                    "type": "number", 
-                                                                    "example": 12.50,
-                                                                    "description": "最終価格"
-                                                                },
-                                                                "volume": {
-                                                                    "type": "number", 
-                                                                    "example": 1500,
-                                                                    "description": "取引量"
-                                                                }
-                                                            }
-                                                        }
-                                                    },
-                                                    "puts": {
-                                                        "type": "array",
-                                                        "description": "プットオプション情報",
-                                                        "items": {
-                                                            "type": "object",
-                                                            "properties": {
-                                                                "strike": {
-                                                                    "type": "number", 
-                                                                    "example": 200,
-                                                                    "description": "行使価格"
-                                                                },
-                                                                "lastPrice": {
-                                                                    "type": "number", 
-                                                                    "example": 4.20,
-                                                                    "description": "最終価格"
-                                                                },
-                                                                "volume": {
-                                                                    "type": "number", 
-                                                                    "example": 800,
-                                                                    "description": "取引量"
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "/financials": {
-                "get": {
-                    "summary": "財務情報取得",
-                    "description": "指定されたティッカーシンボルの財務情報を取得します",
-                    "parameters": [
-                        {
-                            "name": "ticker",
-                            "in": "query",
-                            "required": True,
-                            "description": "ティッカーシンボル（例: AAPL, MSFT, 7203.T）",
-                            "schema": {"type": "string"}
-                        }
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "成功",
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "symbol": {
-                                                "type": "string", 
-                                                "example": "AAPL",
-                                                "description": "ティッカーシンボル"
+                                                "description": "オプション情報"
                                             },
                                             "financials": {
                                                 "type": "object",
-                                                "description": "財務情報",
-                                                "properties": {
-                                                    "incomeStatement": {
-                                                        "type": "object",
-                                                        "description": "損益計算書",
-                                                        "properties": {
-                                                            "revenue": {
-                                                                "type": "number", 
-                                                                "example": 394328000000,
-                                                                "description": "売上高"
-                                                            },
-                                                            "grossProfit": {
-                                                                "type": "number", 
-                                                                "example": 170782000000,
-                                                                "description": "売上総利益"
-                                                            },
-                                                            "netIncome": {
-                                                                "type": "number", 
-                                                                "example": 96995000000,
-                                                                "description": "純利益"
-                                                            }
-                                                        }
-                                                    },
-                                                    "balanceSheet": {
-                                                        "type": "object",
-                                                        "description": "貸借対照表",
-                                                        "properties": {
-                                                            "totalAssets": {
-                                                                "type": "number", 
-                                                                "example": 352755000000,
-                                                                "description": "総資産"
-                                                            },
-                                                            "totalLiabilities": {
-                                                                "type": "number", 
-                                                                "example": 287912000000,
-                                                                "description": "総負債"
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                                                "description": "財務諸表（損益計算書、貸借対照表、キャッシュフロー）"
+                                            },
+                                            "analysts": {
+                                                "type": "object",
+                                                "description": "アナリスト予想"
+                                            },
+                                            "isin": {
+                                                "type": "string",
+                                                "description": "国際証券識別番号"
+                                            },
+                                            "recommendations": {
+                                                "type": "array",
+                                                "description": "アナリスト推奨履歴"
+                                            },
+                                            "calendar": {
+                                                "type": "array",
+                                                "description": "イベントカレンダー（決算日など）"
+                                            },
+                                            "earnings_dates": {
+                                                "type": "array",
+                                                "description": "過去/未来の決算日"
+                                            },
+                                            "sustainability": {
+                                                "type": "object",
+                                                "description": "ESG情報"
+                                            },
+                                            "holders": {
+                                                "type": "object",
+                                                "description": "株主情報（大株主、機関投資家、投資信託）"
+                                            },
+                                            "shares": {
+                                                "type": "object",
+                                                "description": "株式数詳細"
+                                            },
+                                            "analysis": {
+                                                "type": "object",
+                                                "description": "アナリスト分析"
+                                            },
+                                            "upgrades_downgrades": {
+                                                "type": "array",
+                                                "description": "格付け変更履歴"
+                                            },
+                                            "timestamp": {
+                                                "type": "string", 
+                                                "format": "date-time",
+                                                "description": "データ取得時刻"
                                             }
                                         }
                                     }
@@ -1281,10 +876,10 @@ def generate_swagger_ui_html(event=None, context=None):
                     }
                 }
             },
-            "/analysts": {
+            "/chart": {
                 "get": {
-                    "summary": "アナリスト予想取得",
-                    "description": "指定されたティッカーシンボルのアナリスト予想情報を取得します",
+                    "summary": "チャート画像生成",
+                    "description": "指定されたティッカーシンボルの株価チャートを画像で生成します",
                     "parameters": [
                         {
                             "name": "ticker",
@@ -1292,53 +887,48 @@ def generate_swagger_ui_html(event=None, context=None):
                             "required": True,
                             "description": "ティッカーシンボル（例: AAPL, MSFT, 7203.T）",
                             "schema": {"type": "string"}
+                        },
+                        {
+                            "name": "period",
+                            "in": "query",
+                            "required": False,
+                            "description": "期間（デフォルト: 1mo）",
+                            "schema": {
+                                "type": "string",
+                                "enum": ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"],
+                                "default": "1mo"
+                            }
+                        },
+                        {
+                            "name": "type",
+                            "in": "query",
+                            "required": False,
+                            "description": "チャートタイプ（デフォルト: line）",
+                            "schema": {
+                                "type": "string",
+                                "enum": ["line", "candle"],
+                                "default": "line"
+                            }
+                        },
+                        {
+                            "name": "size",
+                            "in": "query",
+                            "required": False,
+                            "description": "画像サイズ（デフォルト: 800x400）",
+                            "schema": {
+                                "type": "string",
+                                "default": "800x400"
+                            }
                         }
                     ],
                     "responses": {
                         "200": {
                             "description": "成功",
                             "content": {
-                                "application/json": {
+                                "image/png": {
                                     "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "symbol": {
-                                                "type": "string", 
-                                                "example": "AAPL",
-                                                "description": "ティッカーシンボル"
-                                            },
-                                            "analystRecommendations": {
-                                                "type": "object",
-                                                "description": "アナリスト推奨情報",
-                                                "properties": {
-                                                    "strongBuy": {
-                                                        "type": "number", 
-                                                        "example": 15,
-                                                        "description": "強力買い推奨数"
-                                                    },
-                                                    "buy": {
-                                                        "type": "number", 
-                                                        "example": 20,
-                                                        "description": "買い推奨数"
-                                                    },
-                                                    "hold": {
-                                                        "type": "number", 
-                                                        "example": 8,
-                                                        "description": "ホールド推奨数"
-                                                    },
-                                                    "meanRecommendation": {
-                                                        "type": "string", 
-                                                        "example": "Buy",
-                                                        "description": "平均推奨（Strong Buy, Buy, Hold, Underperform, Sell）"
-                                                    },
-                                                    "targetMean": {
-                                                        "type": "number", 
-                                                        "example": 225.50,
-                                                        "description": "平均目標株価"
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        "type": "string",
+                                        "format": "binary"
                                     }
                                 }
                             }
@@ -1398,3 +988,58 @@ def generate_swagger_ui_html(event=None, context=None):
 </html>
 """
     return html
+
+def get_stock_chart_api(ticker, period='1mo', size='800x400', chart_type='line'):
+    """株価チャート画像を生成し base64 文字列で返却する。エラー時は (None, error) を返す"""
+    try:
+        import matplotlib
+        matplotlib.use('Agg')  # バックエンドを非GUIに
+        import matplotlib.pyplot as plt
+        from io import BytesIO
+        import base64
+
+        # サイズ解析
+        try:
+            width, height = map(int, size.lower().split('x'))
+        except Exception:
+            width, height = 800, 400
+
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period=period)
+        if hist.empty:
+            return None, f'履歴データが取得できませんでした: {ticker}'
+
+        plt.figure(figsize=(width/100, height/100))
+
+        if chart_type == 'candle' and 'Open' in hist.columns:
+            # ローソク足（簡易）
+            try:
+                from mplfinance.original_flavor import candlestick_ohlc
+                import matplotlib.dates as mdates
+                ohlc = hist[['Open', 'High', 'Low', 'Close']].copy()
+                ohlc.reset_index(inplace=True)
+                ohlc['Date'] = ohlc['Date'].map(mdates.date2num)
+                ax = plt.gca()
+                candlestick_ohlc(ax, ohlc.values, width=0.6, colorup='g', colordown='r')
+                ax.xaxis_date()
+                plt.title(f'{ticker} {period} candlestick')
+            except Exception:
+                plt.plot(hist.index, hist['Close'], label='Close')
+        else:
+            # 折れ線
+            plt.plot(hist.index, hist['Close'], label='Close')
+            plt.title(f'{ticker} {period} close price')
+
+        plt.xlabel('Date')
+        plt.ylabel('Price')
+        plt.legend()
+        plt.tight_layout()
+
+        buf = BytesIO()
+        plt.savefig(buf, format='png')
+        plt.close()
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        return img_base64, None
+    except Exception as e:
+        return None, str(e)
