@@ -1,323 +1,201 @@
 #!/usr/bin/env python3
 """
-YFinance 銘柄検索ツール - 新API対応版
-キーワードで株式銘柄を検索する（ローカル実行とAPI実行の両方をサポート）
+YFinance 検索ツール - 新API対応版
+株式の検索と基本情報の取得を行う（Lambda関数を直接使用して統一）
 """
 
-import argparse
+import yfinance as yf
 import requests
-import json
-import pandas as pd
+import os
 import sys
+from typing import Optional, Dict, Any, List
+from datetime import datetime
 
-# 新API設定
-API_BASE_URL = "https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod"
+# Lambda関数から直接インポート（統一のため）
+from lambda_function import (
+    search_stocks_api,
+    get_stock_info_api,
+    get_api_gateway_url,
+    # 共通関数をインポート（重複回避）
+    format_currency,
+    get_execution_info,
+    display_search_results_api,
+    display_comprehensive_info_api
+)
 
-def search_stocks_api(query, region='US'):
+# 実行モード設定
+EXECUTION_MODE = os.getenv('EXECUTION_MODE', 'LOCAL')  # LOCAL, DOCKER, LAMBDA
+
+# APIエンドポイント設定（環境変数から取得可能）
+API_BASE_URL = os.getenv('YFINANCE_API_URL', "https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod")
+
+def search_stocks_local(query: str, region: str = "US") -> Optional[List[Dict[str, Any]]]:
     """
-    新しいAPIを使用して銘柄を検索する
+    ローカルで株式を検索（yfinanceを使用）
     
     Args:
-        query (str): 検索キーワード
-        region (str): 検索リージョン（US, JP, DE, CA, AU, GB, FR, IT, ES, KR, IN, HK, SG）
-    
-    Returns:
-        dict: API応答データ
-    """
-    try:
-        url = f"{API_BASE_URL}/search"
-        params = {"q": query, "region": region}
-        
-        print(f"新API検索中: {query} (地域: {region})")
-        response = requests.get(url, params=params, timeout=30)
-        
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"APIエラー: {response.status_code}")
-            print(f"レスポンス: {response.text}")
-            return {"error": f"APIエラー: {response.status_code}"}
-            
-    except Exception as e:
-        print(f"API呼び出しエラー: {e}")
-        return {"error": str(e)}
-
-def search_stocks_local(query, limit=10, region='US'):
-    """
-    Yahoo Financeの検索APIを直接使用して銘柄を検索する（ローカル実行）
-    
-    Args:
-        query (str): 検索キーワード
-        limit (int): 結果の最大件数
-        region (str): 検索リージョン（US, JP, など）
+        query (str): 検索クエリ
+        region (str): 検索地域
     
     Returns:
         list: 検索結果のリスト
     """
-    base_url = "https://query1.finance.yahoo.com/v1/finance/search"
-    
-    # 地域に基づいてクエリパラメータを調整
-    if region.upper() == 'JP':
-        query_params = {
-            'q': query,
-            'quotesCount': limit,
-            'newsCount': 0,
-            'enableFuzzyQuery': True,
-            'quotesQueryId': 'tss_match_phrase_query',
-            'multiQuoteQueryId': 'multi_quote_single_token_query',
-            'enableCb': True,
-            'region': 'JP',
-            'lang': 'ja-JP'
-        }
-    else:
-        query_params = {
-            'q': query,
-            'quotesCount': limit,
-            'newsCount': 0,
-            'enableFuzzyQuery': True,
-            'quotesQueryId': 'tss_match_phrase_query',
-            'multiQuoteQueryId': 'multi_quote_single_token_query',
-            'enableCb': True
-        }
-    
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.93 Safari/537.36'
-        }
-        response = requests.get(base_url, params=query_params, headers=headers, timeout=10)
-        response.raise_for_status()
+        # yfinanceの検索機能を使用
+        search_results = yf.Tickers(query)
+        results = []
         
-        data = response.json()
-        quotes = data.get('quotes', [])
-        return quotes
-    except requests.RequestException as e:
-        print(f"検索APIエラー: {e}")
-        return []
-    except json.JSONDecodeError as e:
-        print(f"JSONデコードエラー: {e}")
-        return []
+        for ticker in search_results.tickers:
+            try:
+                info = ticker.info
+                if info:
+                    result = {
+                        'symbol': info.get('symbol', 'N/A'),
+                        'name': info.get('longName', info.get('shortName', 'N/A')),
+                        'exchange': info.get('exchange', 'N/A'),
+                        'type': info.get('quoteType', 'N/A'),
+                        'current_price': info.get('currentPrice'),
+                        'currency': info.get('currency', 'USD'),
+                        'market_cap': info.get('marketCap')
+                    }
+                    results.append(result)
+            except Exception as e:
+                print(f"警告: {ticker} の情報取得に失敗 - {e}")
+                continue
+        
+        return results
+        
+    except Exception as e:
+        print(f"ローカル検索エラー: {e}")
+        return None
 
-def display_search_results_api(data):
+def search_stocks_api_unified(query: str, region: str = "US") -> Optional[Dict[str, Any]]:
     """
-    新API検索結果を表示
+    Lambda関数を直接使用して株式を検索（完全統一）
     
     Args:
-        data (dict): API応答データ
-    """
-    if not data or 'error' in data:
-        print(f"検索エラー: {data.get('error', '不明なエラー')}")
-        return
-    
-    print(f"\n=== 検索結果: '{data.get('query', 'N/A')}' ({data.get('region', 'N/A')}) ===")
-    print(f"件数: {data.get('count', 0)}")
-    
-    for i, result in enumerate(data.get('results', []), 1):
-        print(f"\n{i}. {result.get('symbol', 'N/A')} - {result.get('name', 'N/A')}")
-        print(f"   取引所: {result.get('exchange', 'N/A')} | タイプ: {result.get('type', 'N/A')}")
-        
-        if result.get('current_price'):
-            price_info = f"   価格: {result['current_price']} {result.get('currency', 'USD')}"
-            if result.get('price_change'):
-                direction = "↑" if result.get('price_change_direction') == 'up' else "↓" if result.get('price_change_direction') == 'down' else "→"
-                price_info += f" ({result['price_change']:+.2f}, {result.get('price_change_percent', 0):+.2f}% {direction})"
-            print(price_info)
-        
-        if result.get('market_cap'):
-            print(f"   時価総額: {result['market_cap']:,}")
-
-def display_search_results_local(results):
-    """
-    ローカル検索結果を表示
-    
-    Args:
-        results (list): 検索結果のリスト
-    """
-    if not results:
-        print("検索結果が見つかりませんでした。")
-        return
-    
-    print(f"\n件数: {len(results)}")
-    print("-" * 80)
-    
-    for i, item in enumerate(results, 1):
-        print(f"{i}. {item.get('symbol', 'N/A')} - {item.get('shortname', item.get('longname', 'N/A'))}")
-        print(f"   取引所: {item.get('exchange', 'N/A')} ({item.get('exchDisp', 'N/A')})")
-        print(f"   タイプ: {item.get('typeDisp', 'N/A')}")
-        
-        # 追加情報があれば表示
-        if item.get('sector'):
-            print(f"   セクター: {item['sector']}")
-        if item.get('industry'):
-            print(f"   業界: {item['industry']}")
-        
-        print()
-
-# 後方互換性のための関数
-def search_stocks(query, limit=10, region='US'):
-    """後方互換性のための関数"""
-    return search_stocks_local(query, limit, region)
-
-def display_search_results(results):
-    """後方互換性のための関数"""
-    return display_search_results_local(results)
-    """
-    検索結果を表形式で表示する
-    
-    Args:
-        results (list): 検索結果のリスト
-    """
-    if not results:
-        print("検索結果がありません")
-        return
-    
-    # 表示するデータを整形
-    data = []
-    for item in results:
-        symbol = item.get('symbol', 'N/A')
-        name = item.get('shortname', item.get('longname', 'N/A'))
-        exchange = item.get('exchange', 'N/A')
-        type_disp = item.get('typeDisp', 'N/A')
-        
-        data.append({
-            'シンボル': symbol,
-            '名称': name,
-            '取引所': exchange,
-            '種類': type_disp
-        })
-    
-    # DataFrameに変換して表示
-    df = pd.DataFrame(data)
-    print(df.to_string(index=False))
-
-
-def format_results_for_json(results):
-    """
-    検索結果をJSON用に整形する
-    
-    Args:
-        results (list): 検索結果のリスト
+        query (str): 検索クエリ
+        region (str): 検索地域
     
     Returns:
-        list: 整形された結果のリスト
+        dict: 検索結果
     """
-    formatted = []
-    for item in results:
-        # 利用可能なすべての情報を抽出
-        result = {
-            'symbol': item.get('symbol', 'N/A'),
-            'name': item.get('shortname', item.get('longname', 'N/A')),
-            'exchange': item.get('exchange', 'N/A'),
-            'exchange_display_name': item.get('exchDisp', 'N/A'),
-            'type': item.get('typeDisp', 'N/A'),
-            'quoteType': item.get('quoteType', 'N/A'),
-            'score': item.get('score', 0),
-            'isYahooFinance': item.get('isYahooFinance', False)
-        }
+    try:
+        # Lambda関数を直接呼び出し
+        query_params = {'region': region}
+        result = search_stocks_api(query, query_params)
         
-        # 追加情報があれば追加
-        if 'sector' in item:
-            result['sector'] = item['sector']
-        if 'industry' in item:
-            result['industry'] = item['industry']
-        if 'market' in item:
-            result['market'] = item['market']
+        # 実行環境情報を追加
+        if not result.get('error'):
+            result['execution_info'] = get_execution_info(EXECUTION_MODE)
         
-        formatted.append(result)
-    return formatted
+        return result
+            
+    except Exception as e:
+        print(f"予期しないエラー: {e}")
+        return {'error': f'検索エラー: {e}'}
 
+def get_stock_info_api_unified(ticker: str, period: str = "1mo") -> Optional[Dict[str, Any]]:
+    """
+    Lambda関数を直接使用して包括的な株式データを取得（完全統一）
+    
+    Args:
+        ticker (str): ティッカーシンボル
+        period (str): 取得期間
+    
+    Returns:
+        dict: 包括的な株式データ
+    """
+    try:
+        # Lambda関数を直接呼び出し
+        result = get_stock_info_api(ticker, period)
+        
+        # 実行環境情報を追加
+        if not result.get('error'):
+            result['execution_info'] = get_execution_info(EXECUTION_MODE)
+        
+        return result
+            
+    except Exception as e:
+        print(f"予期しないエラー: {e}")
+        return {'error': f'データ取得エラー: {e}'}
 
-def main():
-    parser = argparse.ArgumentParser(description='YFinance 銘柄検索ツール - 新API対応版')
-    parser.add_argument('query', help='検索キーワード')
-    parser.add_argument('--limit', type=int, default=10, help='結果の最大件数（ローカル検索のみ、デフォルト: 10）')
-    parser.add_argument('--region', default='US', 
-                       choices=['US', 'CA', 'AU', 'DE', 'FR', 'GB', 'IT', 'ES', 'KR', 'JP', 'IN', 'HK', 'SG'],
-                       help='検索リージョン（デフォルト: US）')
-    parser.add_argument('--json', action='store_true', help='結果をJSON形式で出力')
-    parser.add_argument('--pretty', action='store_true', help='JSONを整形して出力（--jsonと併用）')
-    parser.add_argument('--api', action='store_true', help='新APIを使用（デフォルト）')
-    parser.add_argument('--local', action='store_true', help='ローカル検索を使用')
-    parser.add_argument('--both', action='store_true', help='両方の方法で検索して比較')
-    
-    args = parser.parse_args()
-    
-    # デフォルトは新API使用
-    use_api = not args.local
-    if args.both:
-        use_api = True
-    
-    print(f"YFinance 銘柄検索ツール - 新API対応版")
+def main() -> None:
+    """メイン関数 - Lambda関数を直接使用して完全統一"""
+    # 実行環境情報を表示
+    exec_info = get_execution_info(EXECUTION_MODE)
+    print("YFinance 検索ツール - Lambda関数直接使用版")
+    print("=" * 50)
+    print(f"実行モード: {exec_info['mode']}")
+    print(f"API URL: {API_BASE_URL}")
+    print(f"実行時刻: {exec_info['timestamp']}")
     print("=" * 50)
     
-    if args.both:
-        # 両方の方法で検索
-        print(f"\n【新API検索】")
-        print("-" * 20)
-        api_results = search_stocks_api(args.query, args.region)
-        
-        if args.json:
-            print("=== 新API結果（JSON）===")
-            indent = 2 if args.pretty else None
-            print(json.dumps(api_results, indent=indent, ensure_ascii=False))
-        else:
-            display_search_results_api(api_results)
-        
-        print(f"\n【ローカル検索】")
-        print("-" * 20)
-        local_results = search_stocks_local(args.query, args.limit, args.region)
-        
-        if args.json:
-            print("=== ローカル結果（JSON）===")
-            local_output = {
-                'query': args.query,
-                'region': args.region,
-                'count': len(local_results),
-                'timestamp': pd.Timestamp.now().isoformat(),
-                'results': format_results_for_json(local_results)
-            }
-            indent = 2 if args.pretty else None
-            print(json.dumps(local_output, indent=indent, ensure_ascii=False))
-        else:
-            print(f"「{args.query}」の検索結果（リージョン: {args.region}）:")
-            display_search_results_local(local_results)
+    # コマンドライン引数の処理
+    if len(sys.argv) < 2:
+        print("使用方法:")
+        print("  python yfinance_search.py <検索クエリ> [地域]")
+        print("  例: python yfinance_search.py apple US")
+        print("  例: python yfinance_search.py toyota JP")
+        return
     
-    elif use_api:
-        # 新API検索
-        print(f"新APIで検索中...")
-        results = search_stocks_api(args.query, args.region)
-        
-        if args.json:
-            indent = 2 if args.pretty else None
-            print(json.dumps(results, indent=indent, ensure_ascii=False))
-        else:
-            display_search_results_api(results)
+    query = sys.argv[1]
+    region = sys.argv[2] if len(sys.argv) > 2 else "US"
     
-    else:
-        # ローカル検索
-        print(f"ローカル検索中...")
-        results = search_stocks_local(args.query, args.limit, args.region)
+    print(f"\n検索クエリ: '{query}' (地域: {region})")
+    print("-" * 40)
+    
+    # 1. API検索（Lambda関数直接使用）
+    print("\n1. API検索（Lambda関数直接使用）")
+    print("-" * 30)
+    
+    api_results = search_stocks_api_unified(query, region)
+    if api_results:
+        display_search_results_api(api_results)
+    
+    # 2. ローカル検索（比較用）
+    print("\n\n2. ローカル検索（比較用）")
+    print("-" * 25)
+    
+    local_results = search_stocks_local(query, region)
+    if local_results:
+        print(f"\n=== ローカル検索結果: '{query}' ({region}) ===")
+        print(f"件数: {len(local_results)}")
         
-        if args.json:
-            # JSON形式で出力
-            output = {
-                'query': args.query,
-                'region': args.region,
-                'count': len(results),
-                'timestamp': pd.Timestamp.now().isoformat(),
-                'results': format_results_for_json(results)
-            }
+        for i, result in enumerate(local_results, 1):
+            print(f"\n{i}. {result.get('symbol', 'N/A')} - {result.get('name', 'N/A')}")
+            print(f"   取引所: {result.get('exchange', 'N/A')} | タイプ: {result.get('type', 'N/A')}")
             
-            # 整形オプションの処理
-            indent = 2 if args.pretty else None
-            print(json.dumps(output, indent=indent, ensure_ascii=False))
-        else:
-            # 通常の表示
-            print(f"「{args.query}」の検索結果（リージョン: {args.region}）:")
-            display_search_results_local(results)
+            # 価格情報の安全な表示
+            current_price = result.get('current_price')
+            if current_price is not None:
+                currency = result.get('currency', 'USD')
+                print(f"   価格: {format_currency(current_price, currency)}")
+            else:
+                print("   価格: N/A")
     
-    print(f"\n検索完了")
-    if not args.both and use_api:
-        print(f"使用API: {API_BASE_URL}/search")
+    # 3. 最初の結果の詳細情報を取得
+    if api_results and not api_results.get('error') and api_results.get('results'):
+        first_result = api_results['results'][0]
+        symbol = first_result.get('symbol')
+        
+        if symbol:
+            print(f"\n\n3. 詳細情報取得: {symbol}")
+            print("-" * 35)
+            
+            detailed_info = get_stock_info_api_unified(symbol, "1mo")
+            if detailed_info:
+                display_comprehensive_info_api(detailed_info)
+    
+    print("\n" + "=" * 50)
+    print("検索完了")
+    print("\n統一された特徴:")
+    print("• Lambda関数を直接使用して完全統一")
+    print("• 高速な株式検索機能")
+    print("• 包括的な金融データ取得")
+    print("• 複数地域での検索対応")
+    print("• 重複コードの排除")
+    print(f"\n実行環境: {exec_info['mode']}")
 
 if __name__ == "__main__":
     main() 

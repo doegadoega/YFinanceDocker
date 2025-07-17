@@ -121,33 +121,22 @@ docker-compose run --rm yfinance yfinance_search.py apple --region US
 docker-compose run --rm yfinance yfinance_sample.py
 ```
 
-## シェルスクリプトを使った実行
+## 統一されたCLIツールを使った実行
 
 ```bash
-# 使い方を表示
-./yfinance.sh help
+# 銘柄検索
+python yfinance_cli.py search apple
+python yfinance_cli.py search toyota --region JP
 
-# 株価を表示
-./yfinance.sh price AAPL
+# 包括的情報取得
+python yfinance_cli.py info AAPL
+python yfinance_cli.py info 7203.T --period 1mo
 
-# 詳細情報を表示
-./yfinance.sh info AAPL
-
-# 株価履歴を表示
-./yfinance.sh history AAPL --period 1y
-
-# 全情報を表示
-./yfinance.sh all AAPL
+# 基本情報表示
+python yfinance_cli.py basic AAPL
 
 # JSON形式で出力
-./yfinance.sh price AAPL --json
-./yfinance.sh info AAPL --json
-./yfinance.sh all AAPL --json
-
-# 銘柄検索
-./yfinance.sh search apple
-./yfinance.sh search toyota --region JP
-./yfinance.sh search apple --json
+python yfinance_cli.py info AAPL --json
 ```
 
 ## よく使う銘柄のティッカーシンボル

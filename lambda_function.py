@@ -5,6 +5,7 @@ import traceback
 import os
 import pandas as pd
 import numpy as np
+from typing import Union, Dict, Any, Optional
 
 def serialize_for_json(obj):
     """オブジェクトをJSON serializable に変換"""
@@ -53,6 +54,236 @@ def safe_dataframe_to_records(df):
         return serialize_for_json(records)
     except Exception as e:
         return f"Records変換エラー: {str(e)}"
+
+def format_currency(value: Union[int, float, str], currency: str = "USD") -> str:
+    """
+    通貨を適切にフォーマット（共通関数）
+    
+    Args:
+        value: 数値
+        currency: 通貨コード
+    
+    Returns:
+        str: フォーマットされた通貨文字列
+    """
+    if value is None or value == "N/A":
+        return "N/A"
+    
+    try:
+        value = float(value)
+        if currency == "JPY":
+            return f"¥{value:,.0f}"
+        elif currency == "USD":
+            return f"${value:,.2f}"
+        else:
+            return f"{value:,.2f} {currency}"
+    except (ValueError, TypeError):
+        return str(value)
+
+def get_execution_info(mode: str = "LAMBDA") -> Dict[str, str]:
+    """実行環境の情報を取得（共通関数）"""
+    return {
+        'mode': mode,
+        'timestamp': datetime.now().isoformat(),
+        'server': 'lambda'
+    }
+
+def display_stock_info_local(ticker: str) -> None:
+    """
+    株式の基本情報をローカルで表示（共通関数）
+    
+    Args:
+        ticker (str): ティッカーシンボル
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        print(f"\n=== {ticker} の基本情報（ローカル取得）===")
+        print(f"会社名: {info.get('longName', 'N/A')}")
+        print(f"業界: {info.get('industry', 'N/A')}")
+        print(f"セクター: {info.get('sector', 'N/A')}")
+        
+        # 価格情報の安全な表示
+        current_price = info.get('currentPrice')
+        if current_price is not None:
+            currency = "JPY" if ticker.endswith('.T') else "USD"
+            print(f"現在価格: {format_currency(current_price, currency)}")
+        else:
+            print("現在価格: N/A")
+        
+        # 時価総額の安全な表示
+        market_cap = info.get('marketCap')
+        if market_cap is not None:
+            currency = "JPY" if ticker.endswith('.T') else "USD"
+            print(f"時価総額: {format_currency(market_cap, currency)}")
+        else:
+            print("時価総額: N/A")
+        
+        # 配当利回りの安全な表示
+        dividend_yield = info.get('dividendYield')
+        if dividend_yield is not None:
+            print(f"配当利回り: {dividend_yield:.2%}")
+        else:
+            print("配当利回り: N/A")
+        
+    except Exception as e:
+        print(f"エラー: {ticker} の情報取得に失敗しました - {e}")
+
+def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
+    """
+    APIから取得した包括的な株式情報を表示（共通関数）
+    
+    Args:
+        data (dict): API応答データ
+    """
+    if not data or 'error' in data:
+        print(f"エラー: {data.get('error', '不明なエラー')}")
+        return
+    
+    ticker = data.get('ticker', 'N/A')
+    print(f"\n=== {ticker} の包括的情報（API取得）===")
+    
+    # 基本情報
+    if data.get('info'):
+        info = data['info']
+        print(f"会社名: {info.get('longName', 'N/A')}")
+        print(f"業界: {info.get('industry', 'N/A')}")
+        print(f"セクター: {info.get('sector', 'N/A')}")
+        
+        # 従業員数の安全な表示
+        employees = info.get('fullTimeEmployees')
+        if employees is not None:
+            print(f"従業員数: {employees:,}")
+        else:
+            print("従業員数: N/A")
+    
+    # 価格情報
+    if data.get('price'):
+        price = data['price']
+        print(f"\n--- 価格情報 ---")
+        
+        current_price = price.get('current_price')
+        currency = price.get('currency', 'USD')
+        print(f"現在価格: {format_currency(current_price, currency)}")
+        
+        # 価格変化の安全な表示
+        price_change = price.get('price_change')
+        if price_change is not None and isinstance(price_change, (int, float)):
+            direction = "↑" if price.get('price_change_direction') == 'up' else "↓" if price.get('price_change_direction') == 'down' else "→"
+            price_change_percent = price.get('price_change_percent', 0)
+            print(f"変化: {price_change:+.2f} ({price_change_percent:+.2f}%) {direction}")
+    
+    # ESG情報
+    if data.get('sustainability') and isinstance(data['sustainability'], dict):
+        esg = data['sustainability'].get('esgScores', {})
+        if esg:
+            print(f"\n--- ESG情報 ---")
+            print(f"ESG総合スコア: {esg.get('totalEsg', 'N/A')}")
+            print(f"環境スコア: {esg.get('environmentScore', 'N/A')}")
+            print(f"社会スコア: {esg.get('socialScore', 'N/A')}")
+            print(f"ガバナンススコア: {esg.get('governanceScore', 'N/A')}")
+    
+    # 財務情報
+    if data.get('financials') and isinstance(data['financials'], dict):
+        income = data['financials'].get('income_statement', {})
+        if income:
+            print(f"\n--- 財務情報 ---")
+            # 売上高を探す
+            revenue_keys = ['Total Revenue', 'Revenue', 'Net Sales']
+            for key in revenue_keys:
+                if key in income:
+                    revenue_data = income[key]
+                    if isinstance(revenue_data, dict) and revenue_data:
+                        latest_revenue = list(revenue_data.values())[0]
+                        if latest_revenue is not None:
+                            if isinstance(latest_revenue, (int, float)):
+                                print(f"売上高: {latest_revenue:,.0f}")
+                            else:
+                                print(f"売上高: {latest_revenue}")
+                    break
+    
+    # 株価履歴
+    if data.get('history') and isinstance(data['history'], list):
+        print(f"\n--- 直近の株価履歴 ---")
+        recent_data = data['history'][-5:] if len(data['history']) >= 5 else data['history']
+        for day in recent_data:
+            close_price = day.get('close', 'N/A')
+            volume = day.get('volume', 0)
+            if isinstance(volume, (int, float)):
+                volume_str = f"{volume:,}"
+            else:
+                volume_str = str(volume)
+            print(f"{day.get('date', 'N/A')}: 終値 {close_price} (出来高: {volume_str})")
+    
+    # アナリスト情報
+    if data.get('analysts') and isinstance(data['analysts'], dict):
+        analysts = data['analysts']
+        print(f"\n--- アナリスト情報 ---")
+        if analysts.get('recommendation_mean'):
+            print(f"推奨平均: {analysts['recommendation_mean']}")
+        if analysts.get('target_mean_price'):
+            print(f"目標平均価格: {analysts['target_mean_price']}")
+        if analysts.get('number_of_analysts'):
+            print(f"アナリスト数: {analysts['number_of_analysts']}")
+    
+    # ニュース情報
+    if data.get('news') and isinstance(data['news'], list) and len(data['news']) > 0:
+        print(f"\n--- 最新ニュース ---")
+        for i, news_item in enumerate(data['news'][:3], 1):  # 最新3件
+            if isinstance(news_item, dict):
+                title = news_item.get('title', 'N/A')
+                print(f"{i}. {title}")
+    
+    # 実行環境情報
+    if data.get('execution_info'):
+        exec_info = data['execution_info']
+        print(f"\n--- 実行環境情報 ---")
+        print(f"実行モード: {exec_info.get('mode', 'N/A')}")
+        print(f"実行時刻: {exec_info.get('timestamp', 'N/A')}")
+
+def display_search_results_api(results: Dict[str, Any]) -> None:
+    """
+    API検索結果を表示（共通関数）
+    
+    Args:
+        results (dict): 検索結果
+    """
+    if not results or 'error' in results:
+        print(f"検索エラー: {results.get('error', '不明なエラー')}")
+        return
+    
+    print(f"\n=== 検索結果: '{results.get('query', 'N/A')}' ({results.get('region', 'N/A')}) ===")
+    print(f"件数: {results.get('count', 0)}")
+    
+    for i, result in enumerate(results.get('results', []), 1):
+        print(f"\n{i}. {result.get('symbol', 'N/A')} - {result.get('name', 'N/A')}")
+        print(f"   取引所: {result.get('exchange', 'N/A')} | タイプ: {result.get('type', 'N/A')}")
+        
+        # 価格情報の安全な表示
+        current_price = result.get('current_price')
+        if current_price is not None:
+            currency = result.get('currency', 'USD')
+            price_info = f"   価格: {format_currency(current_price, currency)}"
+            
+            # 価格変化の安全な表示
+            price_change = result.get('price_change')
+            if price_change is not None and isinstance(price_change, (int, float)):
+                direction = "↑" if result.get('price_change_direction') == 'up' else "↓" if result.get('price_change_direction') == 'down' else "→"
+                price_change_percent = result.get('price_change_percent', 0)
+                price_info += f" ({price_change:+.2f}, {price_change_percent:+.2f}% {direction})"
+            print(price_info)
+        
+        # エラー情報の表示
+        if result.get('price_error'):
+            print(f"   価格取得エラー: {result['price_error']}")
+    
+    # 実行環境情報
+    if results.get('execution_info'):
+        exec_info = results['execution_info']
+        print(f"\n--- 実行環境情報 ---")
+        print(f"実行モード: {exec_info.get('mode', 'N/A')}")
+        print(f"実行時刻: {exec_info.get('timestamp', 'N/A')}")
 
 def lambda_handler(event, context):
     """
@@ -642,7 +873,7 @@ def get_api_gateway_url(event=None, context=None):
         pass
     
     # 6. 最後の手段として固定URLを使用
-    return 'https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod/'
+    return 'https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod'
 
 def generate_swagger_ui_html(event=None, context=None):
     """Swagger UIのHTMLを生成"""
