@@ -6,7 +6,6 @@ YFinance CLI ツール
 
 import argparse
 import yfinance as yf
-import pandas as pd
 import sys
 import json
 from datetime import datetime

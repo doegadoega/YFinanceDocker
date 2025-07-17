@@ -4,7 +4,7 @@ FROM public.ecr.aws/lambda/python:3.9
 COPY requirements.txt ${LAMBDA_TASK_ROOT}
 
 # 依存関係をインストール
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 関数コードをコピー
 COPY lambda_function.py ${LAMBDA_TASK_ROOT}
