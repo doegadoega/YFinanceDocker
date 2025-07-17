@@ -6,7 +6,7 @@
 set -e
 
 STACK_NAME="yfinance-api-stack"
-REGION=${AWS_DEFAULT_REGION:-us-east-1}
+REGION=$(aws configure get region)
 
 echo "=== YFinance API クリーンアップ開始 ==="
 echo "スタック名: $STACK_NAME"

@@ -7,6 +7,7 @@ YFinanceを使用して株式データを取得・分析するための環境で
 このプロジェクトには以下の機能があります：
 1. **CLIツール** - コマンドラインから株式データを取得
 2. **AWS API** - Lambda + API Gateway による REST API
+3. **Swagger自動生成** - コード解析によるAPI仕様書の自動生成
 
 ## セットアップ
 
@@ -100,15 +101,394 @@ python local_test.py
 ./deploy.sh
 ```
 
+デプロイが成功すると、API Gateway のURLが表示され、自動的にSwagger仕様書が生成されます：
+
+#### Swagger自動生成機能
+
+デプロイ時に以下の機能が自動実行されます：
+
+1. **Lambda関数コード解析**: `swagger_generator_advanced.py`が`lambda_function.py`を解析
+2. **エンドポイント自動検出**: コードからAPIエンドポイントを自動検出
+3. **Swagger仕様書生成**: `swagger_auto.json`ファイルを自動生成
+4. **コンソール表示**: 生成されたSwagger仕様書をコンソールに表示
+
+**生成されるファイル**:
+- `swagger_auto.json`: プロジェクトルートディレクトリに生成
+
+**Swagger UIでの使用方法**:
+1. https://editor.swagger.io/ にアクセス
+2. 生成された`swagger_auto.json`の内容をコピー&ペースト
+3. または、PostmanでImport > Raw text でインポート
+
+**高度な自動生成の利点**:
+- **コード解析ベース**: 実際のLambda関数コードを解析
+- **自動検出**: エンドポイントを自動的に検出
+- **動的**: コードの変更に自動で追従
+- **保守性**: 手動での仕様書更新が不要
+
 デプロイが成功すると、API Gateway のURLが表示されます：
 
 ```
-API Gateway URL: https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/
+API Gateway URL: https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/
 
 === API エンドポイント ===
-株価取得: GET https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/price/{ticker}
-詳細情報: GET https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/info/{ticker}
-履歴データ: GET https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/history/{ticker}?period=1mo
+
+#### 1. 株価取得エンドポイント
+**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/price?ticker={ticker}`
+
+**説明**: 指定されたティッカーシンボルの現在の株価を取得します。
+
+**パラメータ**:
+- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
+
+**レスポンス例**:
+```json
+{
+  "symbol": "AAPL",
+  "price": 208.62,
+  "currency": "USD",
+  "timestamp": "2025-01-14T10:30:00Z"
+}
+```
+
+**使用例**:
+```bash
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/price?ticker=AAPL"
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/price?ticker=7203.T"
+```
+
+#### 2. 詳細情報取得エンドポイント
+**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/info/{ticker}`
+
+**説明**: 指定されたティッカーシンボルの詳細な企業情報を取得します。
+
+**パラメータ**:
+- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
+
+**レスポンス例**:
+```json
+{
+  "symbol": "AAPL",
+  "name": "Apple Inc.",
+  "currentPrice": 208.62,
+  "previousClose": 211.16,
+  "marketCap": 3115906498560,
+  "dividendYield": 0.51,
+  "trailingPE": 32.44,
+  "fiftyTwoWeekHigh": 260.1,
+  "fiftyTwoWeekLow": 169.21,
+  "volume": 38711400,
+  "avgVolume": 45678900,
+  "open": 209.93,
+  "dayHigh": 210.91,
+  "dayLow": 207.54,
+  "priceChange": -2.54,
+  "priceChangePercent": -1.20
+}
+```
+
+**使用例**:
+```bash
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/info/AAPL"
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/info/7203.T"
+```
+
+#### 3. 株価履歴取得エンドポイント
+**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/history/{ticker}?period={period}`
+
+**説明**: 指定されたティッカーシンボルの株価履歴データを取得します。
+
+**パラメータ**:
+- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
+- `period` (オプション): 期間（デフォルト: 1mo）
+  - `1d`: 1日
+  - `5d`: 5日
+  - `1mo`: 1ヶ月
+  - `3mo`: 3ヶ月
+  - `6mo`: 6ヶ月
+  - `1y`: 1年
+  - `2y`: 2年
+  - `5y`: 5年
+  - `10y`: 10年
+  - `ytd`: 年初来
+  - `max`: 最大期間
+
+**レスポンス例**:
+```json
+{
+  "symbol": "AAPL",
+  "period": "1mo",
+  "data": {
+    "2025-01-14": {
+      "Open": 209.93,
+      "High": 210.91,
+      "Low": 207.54,
+      "Close": 208.62,
+      "Volume": 38711400,
+      "Dividends": 0.0,
+      "Stock Splits": 0.0
+    },
+    "2025-01-13": {
+      "Open": 210.50,
+      "High": 212.30,
+      "Low": 209.80,
+      "Close": 211.16,
+      "Volume": 42156000,
+      "Dividends": 0.0,
+      "Stock Splits": 0.0
+    }
+  }
+}
+```
+
+**使用例**:
+```bash
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/history/AAPL"
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/history/AAPL?period=1y"
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/history/7203.T?period=6mo"
+```
+
+#### 4. ニュース取得エンドポイント
+**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/news/{ticker}`
+
+**説明**: 指定されたティッカーシンボルに関連する最新ニュースを取得します。
+
+**パラメータ**:
+- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
+
+**レスポンス例**:
+```json
+{
+  "symbol": "AAPL",
+  "news": [
+    {
+      "title": "Apple Reports Record Q4 Earnings",
+      "link": "https://example.com/news/1",
+      "publisher": "Reuters",
+      "published": "2025-01-14T08:00:00Z",
+      "summary": "Apple Inc. reported record quarterly earnings..."
+    }
+  ]
+}
+```
+
+**使用例**:
+```bash
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/news/AAPL"
+```
+
+#### 5. 配当情報取得エンドポイント
+**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/dividends/{ticker}`
+
+**説明**: 指定されたティッカーシンボルの配当情報を取得します。
+
+**パラメータ**:
+- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
+
+**レスポンス例**:
+```json
+{
+  "symbol": "AAPL",
+  "dividendYield": 0.51,
+  "dividendRate": 0.96,
+  "payoutRatio": 0.16,
+  "exDividendDate": "2024-11-08",
+  "dividendHistory": [
+    {
+      "date": "2024-11-15",
+      "amount": 0.24,
+      "type": "Regular"
+    }
+  ]
+}
+```
+
+**使用例**:
+```bash
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/dividends/AAPL"
+```
+
+#### 6. オプション情報取得エンドポイント
+**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/options/{ticker}`
+
+**説明**: 指定されたティッカーシンボルのオプション情報を取得します。
+
+**パラメータ**:
+- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
+
+**レスポンス例**:
+```json
+{
+  "symbol": "AAPL",
+  "currentPrice": 208.62,
+  "options": {
+    "calls": [
+      {
+        "strike": 200,
+        "lastPrice": 12.50,
+        "bid": 12.45,
+        "ask": 12.55,
+        "volume": 1500,
+        "openInterest": 5000
+      }
+    ],
+    "puts": [
+      {
+        "strike": 200,
+        "lastPrice": 4.20,
+        "bid": 4.15,
+        "ask": 4.25,
+        "volume": 800,
+        "openInterest": 3000
+      }
+    ]
+  }
+}
+```
+
+**使用例**:
+```bash
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/options/AAPL"
+```
+
+#### 7. 財務情報取得エンドポイント
+**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/financials/{ticker}`
+
+**説明**: 指定されたティッカーシンボルの財務情報を取得します。
+
+**パラメータ**:
+- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
+
+**レスポンス例**:
+```json
+{
+  "symbol": "AAPL",
+  "financials": {
+    "incomeStatement": {
+      "revenue": 394328000000,
+      "grossProfit": 170782000000,
+      "operatingIncome": 114301000000,
+      "netIncome": 96995000000
+    },
+    "balanceSheet": {
+      "totalAssets": 352755000000,
+      "totalLiabilities": 287912000000,
+      "totalEquity": 64843000000
+    },
+    "cashFlow": {
+      "operatingCashFlow": 110543000000,
+      "investingCashFlow": -109559000000,
+      "financingCashFlow": -110543000000
+    }
+  }
+}
+```
+
+**使用例**:
+```bash
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/financials/AAPL"
+```
+
+#### 8. アナリスト予想取得エンドポイント
+**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/analysts/{ticker}`
+
+**説明**: 指定されたティッカーシンボルのアナリスト予想情報を取得します。
+
+**パラメータ**:
+- `ticker` (必須): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
+
+**レスポンス例**:
+```json
+{
+  "symbol": "AAPL",
+  "analystRecommendations": {
+    "strongBuy": 15,
+    "buy": 20,
+    "hold": 8,
+    "sell": 2,
+    "strongSell": 1,
+    "meanRecommendation": "Buy",
+    "targetMean": 225.50,
+    "targetMedian": 220.00,
+    "targetHigh": 250.00,
+    "targetLow": 180.00
+  }
+}
+```
+
+**使用例**:
+```bash
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/analysts/AAPL"
+```
+
+#### 9. 銘柄検索エンドポイント
+**URL**: `GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/search?query={query}&region={region}`
+
+**説明**: キーワードによる銘柄検索を実行します。
+
+**パラメータ**:
+- `query` (必須): 検索キーワード（例: apple, microsoft）
+- `region` (オプション): 検索リージョン（デフォルト: US）
+  - `US`: アメリカ市場
+  - `JP`: 日本市場
+
+**レスポンス例**:
+```json
+{
+  "query": "apple",
+  "region": "US",
+  "count": 7,
+  "results": [
+    {
+      "symbol": "AAPL",
+      "name": "Apple Inc.",
+      "exchange": "NMS",
+      "type": "Equity",
+      "score": 31292.0
+    },
+    {
+      "symbol": "APLE",
+      "name": "Apple Hospitality REIT Inc",
+      "exchange": "NYQ",
+      "type": "Equity",
+      "score": 1250.0
+    }
+  ]
+}
+```
+
+**使用例**:
+```bash
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/search?query=apple"
+curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/search?query=トヨタ&region=JP"
+```
+
+### エラーレスポンス
+
+すべてのエンドポイントで、エラーが発生した場合は以下の形式でレスポンスが返されます：
+
+```json
+{
+  "error": "エラーメッセージ",
+  "status": "error",
+  "timestamp": "2025-01-14T10:30:00Z"
+}
+```
+
+### 共通レスポンスヘッダー
+
+すべてのAPIレスポンスには以下のヘッダーが含まれます：
+
+- `Content-Type: application/json`
+- `Access-Control-Allow-Origin: *`
+- `Access-Control-Allow-Methods: GET, POST, OPTIONS`
+- `Access-Control-Allow-Headers: Content-Type`
+
+### レート制限
+
+- 各エンドポイント: 1000リクエスト/分
+- 全体: 10000リクエスト/日
+- 超過時は429エラーが返されます
 ```
 
 ### API の使用例
@@ -122,6 +502,25 @@ curl "https://your-api-url/prod/info/MSFT"
 
 # 履歴データ取得
 curl "https://your-api-url/prod/history/GOOGL?period=1y"
+
+# ニュース取得
+curl "https://your-api-url/prod/news/AAPL"
+
+# 配当情報取得
+curl "https://your-api-url/prod/dividends/MSFT"
+
+# オプション情報取得
+curl "https://your-api-url/prod/options/TSLA"
+
+# 財務情報取得
+curl "https://your-api-url/prod/financials/NVDA"
+
+# アナリスト予想取得
+curl "https://your-api-url/prod/analysts/AMZN"
+
+# 銘柄検索
+curl "https://your-api-url/prod/search?query=apple"
+curl "https://your-api-url/prod/search?query=トヨタ&region=JP"
 ```
 
 ### リソースの削除
@@ -167,7 +566,7 @@ curl "https://your-api-url/prod/history/GOOGL?period=1y"
    aws configure
    # AWS Access Key ID: [アクセスキーを入力]
    # AWS Secret Access Key: [シークレットキーを入力]
-   # Default region name: [リージョン名を入力（例：us-east-1）]
+   # Default region name: [リージョン名を入力（例：ap-northeast-1）]
    # Default output format: [出力形式を入力（例：json）]
    ```
 
@@ -208,17 +607,17 @@ curl "https://your-api-url/prod/history/GOOGL?period=1y"
 2. デプロイプロセスの流れ：
    - SAMテンプレートのビルド
    - CloudFormationスタックの作成/更新
-   - Lambda関数のデプロイ
+   - Lambda関数のデプロイｙ
    - API Gatewayの設定
 
 3. デプロイが成功すると、以下のような出力が表示されます：
    ```
-   API Gateway URL: https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/
+   API Gateway URL: https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/
    
    === API エンドポイント ===
-   株価取得: GET https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/price/{ticker}
-   詳細情報: GET https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/info/{ticker}
-   履歴データ: GET https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/history/{ticker}?period=1mo
+   株価取得: GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/price/{ticker}
+   詳細情報: GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/info/{ticker}
+   履歴データ: GET https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/history/{ticker}?period=1mo
    ```
 
 ### 6. デプロイ後の確認
@@ -226,13 +625,13 @@ curl "https://your-api-url/prod/history/GOOGL?period=1y"
 1. エンドポイントのテスト：
    ```bash
    # 株価取得
-   curl "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/price/AAPL"
+   curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/price/AAPL"
    
    # 詳細情報取得
-   curl "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/info/MSFT"
+   curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/info/MSFT"
    
    # 履歴データ取得
-   curl "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/history/GOOGL?period=1y"
+   curl "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/history/GOOGL?period=1y"
    ```
 
 2. AWS Management Consoleでの確認：
@@ -275,14 +674,22 @@ curl "https://your-api-url/prod/history/GOOGL?period=1y"
 
 ### エンドポイント一覧
 
-- `GET /price/{ticker}` - 現在の株価取得
-- `GET /info/{ticker}` - 株式の詳細情報取得
-- `GET /history/{ticker}?period={period}` - 株価履歴取得
+| エンドポイント | メソッド | 説明 |
+|---------------|---------|------|
+| `/price/{ticker}` | GET | 現在の株価取得 |
+| `/info/{ticker}` | GET | 株式の詳細情報取得 |
+| `/history/{ticker}` | GET | 株価履歴取得（期間指定可能） |
+| `/news/{ticker}` | GET | 関連ニュース取得 |
+| `/dividends/{ticker}` | GET | 配当情報取得 |
+| `/options/{ticker}` | GET | オプション情報取得 |
+| `/financials/{ticker}` | GET | 財務情報取得 |
+| `/analysts/{ticker}` | GET | アナリスト予想取得 |
+| `/search` | GET | 銘柄検索（キーワード・リージョン指定） |
 
 ### 対応するティッカーシンボル
 
-- **アメリカ株**: AAPL, MSFT, GOOGL, TSLA, NVDA など
-- **日本株**: 7203.T (トヨタ), 9984.T (ソフトバンク), 6501.T (日立) など
+- **アメリカ株**: AAPL, MSFT, GOOGL, TSLA, NVDA, AMZN, META, NFLX, AMD, INTC など
+- **日本株**: 7203.T (トヨタ), 9984.T (ソフトバンク), 6501.T (日立), 6758.T (ソニー), 6861.T (キーエンス) など
 - **その他の世界市場**: 対応する取引所の形式に従う
 
 ## プロジェクト構成
@@ -496,11 +903,31 @@ curl "https://your-api-url/prod/history/GOOGL?period=1y"
 - 検索結果の表形式表示
 - JSON形式での出力
 
+## ファイル構成
+
+### 主要ファイル
+- `lambda_function.py`: AWS Lambda関数のメインコード
+- `template.yaml`: AWS SAMテンプレート
+- `deploy.sh`: デプロイスクリプト
+- `swagger_generator_advanced.py`: Swagger自動生成ツール（コード解析ベース）
+- `swagger_auto.json`: 自動生成されるSwagger仕様書
+
+### CLIツール
+- `yfinance_cli.py`: コマンドライン株式データ取得ツール
+- `yfinance_search.py`: 銘柄検索ツール
+- `yfinance_sample.py`: サンプルプログラム
+
+### テスト・開発用
+- `test_api.py`: API機能テスト
+- `local_test.py`: ローカルHTTPサーバーテスト
+- `requirements.txt`: Python依存関係
+
 ## 注意事項
 
 - インターネット接続が必要です
 - Yahoo FinanceのAPIを使用しているため、利用制限がある場合があります
 - 日本株式の場合は、ティッカーシンボルの後に`.T`を付けてください
+- Swagger仕様書はデプロイ時に自動生成されます（`swagger_auto.json`）
 
 ## トラブルシューティング
 

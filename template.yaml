@@ -6,7 +6,6 @@ Globals:
   Function:
     Timeout: 30
     MemorySize: 512
-    Runtime: python3.9
     Environment:
       Variables:
         PYTHONPATH: /opt/python
@@ -24,30 +23,82 @@ Resources:
   YFinanceFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: .
-      Handler: lambda_function.lambda_handler
-      Runtime: python3.9
+      PackageType: Image
+      MemorySize: 1024
       Timeout: 30
-      MemorySize: 512
+      Environment:
+        Variables:
+          # 環境変数は後で動的に設定されるため、ここでは空にする
+          API_GATEWAY_URL: ""
       Events:
+        # ベースURL - Swagger UI表示
+        GetSwaggerUI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /
+            Method: get
+        SearchStocks:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /search
+            Method: get
         GetPrice:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /price/{ticker}
+            Path: /price
             Method: get
         GetInfo:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /info/{ticker}
+            Path: /info
             Method: get
         GetHistory:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /history/{ticker}
+            Path: /history
             Method: get
+        GetNews:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /news
+            Method: get
+        GetDividends:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /dividends
+            Method: get
+        GetOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /options
+            Method: get
+        GetFinancials:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /financials
+            Method: get
+        GetAnalysts:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /analysts
+            Method: get
+        # OPTIONS requests for CORS
+        OptionsSearch:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /search
+            Method: options
         OptionsPrice:
           Type: Api
           Properties:
@@ -66,6 +117,40 @@ Resources:
             RestApiId: !Ref YFinanceApi
             Path: /history/{ticker}
             Method: options
+        OptionsNews:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /news/{ticker}
+            Method: options
+        OptionsDividends:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /dividends/{ticker}
+            Method: options
+        OptionsOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /options/{ticker}
+            Method: options
+        OptionsFinancials:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /financials/{ticker}
+            Method: options
+        OptionsAnalysts:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /analysts/{ticker}
+            Method: options
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: .
+      DockerTag: latest
 
 Outputs:
   YFinanceApiUrl:
@@ -79,3 +164,9 @@ Outputs:
     Value: !GetAtt YFinanceFunction.Arn
     Export:
       Name: YFinanceFunctionArn
+
+  YFinanceFunctionName:
+    Description: 'YFinance Lambda Function Name'
+    Value: !Ref YFinanceFunction
+    Export:
+      Name: YFinanceFunctionName
