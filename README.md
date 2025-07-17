@@ -131,6 +131,144 @@ curl "https://your-api-url/prod/history/GOOGL?period=1y"
 ./cleanup.sh
 ```
 
+## AWS デプロイマニュアル
+
+このセクションでは、YFinanceアプリケーションをAWS Lambdaにデプロイする詳細な手順を説明します。
+
+### 1. AWS アカウントの準備
+
+1. AWSアカウントを持っていない場合は、[AWS公式サイト](https://aws.amazon.com/)で作成してください
+2. IAMユーザーに以下の権限が必要です：
+   - AWSLambdaFullAccess
+   - AmazonAPIGatewayAdministrator
+   - AWSCloudFormationFullAccess
+   - IAMFullAccess（または最小限必要な権限）
+
+### 2. 開発環境のセットアップ
+
+1. AWS CLIのインストール：
+   ```bash
+   # macOS/Linux
+   curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+   unzip awscliv2.zip
+   sudo ./aws/install
+   
+   # Windows
+   # https://aws.amazon.com/cli/ からインストーラーをダウンロード
+   ```
+
+2. AWS SAM CLIのインストール：
+   ```bash
+   pip install aws-sam-cli
+   ```
+
+3. AWS認証情報の設定：
+   ```bash
+   aws configure
+   # AWS Access Key ID: [アクセスキーを入力]
+   # AWS Secret Access Key: [シークレットキーを入力]
+   # Default region name: [リージョン名を入力（例：us-east-1）]
+   # Default output format: [出力形式を入力（例：json）]
+   ```
+
+### 3. プロジェクトの準備
+
+1. 依存関係のインストール：
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. `template.yaml`の確認：
+   - Lambda関数の設定
+   - API Gatewayのエンドポイント設定
+   - 必要に応じて、タイムアウトやメモリサイズを調整
+
+### 4. ローカルテスト
+
+デプロイ前にローカルでテストすることをお勧めします：
+
+1. 基本機能のテスト：
+   ```bash
+   python test_api.py
+   ```
+
+2. ローカルHTTPサーバーでのテスト：
+   ```bash
+   python local_test.py
+   # ブラウザで http://localhost:8000 にアクセス
+   ```
+
+### 5. AWS へのデプロイ
+
+1. デプロイスクリプトの実行：
+   ```bash
+   ./deploy.sh
+   ```
+
+2. デプロイプロセスの流れ：
+   - SAMテンプレートのビルド
+   - CloudFormationスタックの作成/更新
+   - Lambda関数のデプロイ
+   - API Gatewayの設定
+
+3. デプロイが成功すると、以下のような出力が表示されます：
+   ```
+   API Gateway URL: https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/
+   
+   === API エンドポイント ===
+   株価取得: GET https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/price/{ticker}
+   詳細情報: GET https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/info/{ticker}
+   履歴データ: GET https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/history/{ticker}?period=1mo
+   ```
+
+### 6. デプロイ後の確認
+
+1. エンドポイントのテスト：
+   ```bash
+   # 株価取得
+   curl "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/price/AAPL"
+   
+   # 詳細情報取得
+   curl "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/info/MSFT"
+   
+   # 履歴データ取得
+   curl "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/history/GOOGL?period=1y"
+   ```
+
+2. AWS Management Consoleでの確認：
+   - Lambda関数の確認（AWS Lambdaコンソール）
+   - API Gatewayの確認（API Gatewayコンソール）
+   - CloudFormationスタックの確認（CloudFormationコンソール）
+
+### 7. トラブルシューティング
+
+1. デプロイエラー：
+   - AWS認証情報が正しく設定されているか確認
+   - IAMユーザーに必要な権限があるか確認
+   - AWS_DEFAULT_REGIONが正しく設定されているか確認
+
+2. Lambda実行エラー：
+   - CloudWatchログを確認（AWS Lambdaコンソールから）
+   - 依存関係が正しくパッケージングされているか確認
+   - タイムアウト設定が適切か確認
+
+3. API Gatewayエラー：
+   - CORSが正しく設定されているか確認
+   - Lambda統合が正しく設定されているか確認
+
+### 8. リソースの削除
+
+プロジェクトが不要になった場合：
+```bash
+./cleanup.sh
+```
+
+このスクリプトは以下のリソースを削除します：
+- CloudFormationスタック
+- Lambda関数
+- API Gateway
+- IAMロール
+
 ## API仕様
 
 詳細なAPI仕様については `api_documentation.md` を参照してください。
