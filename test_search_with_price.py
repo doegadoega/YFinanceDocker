@@ -147,22 +147,27 @@ def test_comprehensive_info_api():
                     data_types = []
                     data_mapping = {
                         'info': '基本情報',
+                        'fast_info': '高速情報',
                         'price': '価格情報',
                         'history': '価格履歴',
                         'dividends': '配当',
                         'splits': '株式分割',
+                        'options': 'オプション情報',
                         'financials': '財務諸表',
-                        'sustainability': 'ESG情報',
                         'analysts': 'アナリスト情報',
-                        'calendar': '決算カレンダー',
-                        'holders': '株主情報',
-                        'isin': 'ISIN',
-                        'news': 'ニュース',
-                        'recommendations': '推奨履歴',
                         'earnings': '決算情報',
-                        'balance_sheet': '貸借対照表',
-                        'cashflow': 'キャッシュフロー',
-                        'options': 'オプション情報'
+                        'isin': 'ISIN',
+                        'recommendations': '推奨履歴',
+                        'calendar': '決算カレンダー',
+                        'earnings_dates': '決算日',
+                        'sustainability': 'ESG情報',
+                        'holders': '株主情報',
+                        'shares': '株式数詳細',
+                        'analysis': 'アナリスト分析',
+                        'upgrades_downgrades': '格付け変更履歴',
+                        'news': 'ニュース',
+                        'logo_url': 'ロゴURL',
+                        'execution_info': '実行環境情報'
                     }
                     
                     for key, label in data_mapping.items():

@@ -88,6 +88,17 @@ def get_execution_info(mode: str = "LAMBDA") -> Dict[str, str]:
         'server': 'lambda'
     }
 
+def validate_ticker_parameter(query_parameters, headers):
+    """ティッカーパラメータのバリデーション（共通化）"""
+    ticker = query_parameters.get('ticker', '').upper()
+    if not ticker:
+        return None, {
+            'statusCode': 400,
+            'headers': headers,
+            'body': json.dumps({'error': 'ティッカーシンボルが必要です'})
+        }
+    return ticker, None
+
 def display_stock_info_local(ticker: str) -> None:
     """
     株式の基本情報をローカルで表示（共通関数）
@@ -198,10 +209,83 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
                         latest_revenue = list(revenue_data.values())[0]
                         if latest_revenue is not None:
                             if isinstance(latest_revenue, (int, float)):
-                                print(f"売上高: {latest_revenue:,.0f}")
+                                currency = data.get('price', {}).get('currency', 'USD')
+                                print(f"売上高: {format_currency(latest_revenue, currency)}")
                             else:
                                 print(f"売上高: {latest_revenue}")
                     break
+    
+    # 決算情報
+    if data.get('earnings') and isinstance(data['earnings'], dict):
+        earnings = data['earnings']
+        if earnings and not earnings.get('error'):
+            print(f"\n--- 決算情報 ---")
+            if 'trailingEps' in earnings:
+                print(f"過去12ヶ月EPS: {earnings['trailingEps']}")
+            if 'forwardEps' in earnings:
+                print(f"予想EPS: {earnings['forwardEps']}")
+            if 'trailingPE' in earnings:
+                print(f"過去12ヶ月P/E比: {earnings['trailingPE']}")
+            if 'forwardPE' in earnings:
+                print(f"予想P/E比: {earnings['forwardPE']}")
+            if 'pegRatio' in earnings:
+                print(f"PEGレシオ: {earnings['pegRatio']}")
+    
+    # 株式分割
+    if data.get('splits') and isinstance(data['splits'], list) and data['splits']:
+        print(f"\n--- 株式分割履歴 ---")
+        for split in data['splits'][:3]:  # 最新3件
+            if isinstance(split, dict):
+                print(f"日付: {split.get('date')}, 比率: {split.get('ratio')}")
+    
+    # 配当情報
+    if data.get('dividends') and isinstance(data['dividends'], list) and data['dividends']:
+        print(f"\n--- 配当履歴 ---")
+        for dividend in data['dividends'][:3]:  # 最新3件
+            if isinstance(dividend, dict):
+                amount = dividend.get('amount', 'N/A')
+                if isinstance(amount, (int, float)):
+                    currency = data.get('price', {}).get('currency', 'USD')
+                    print(f"日付: {dividend.get('date')}, 配当: {format_currency(amount, currency)}")
+                else:
+                    print(f"日付: {dividend.get('date')}, 配当: {amount}")
+    
+    # 株主情報
+    if data.get('holders') and isinstance(data['holders'], dict):
+        holders = data['holders']
+        if holders and not holders.get('error'):
+            print(f"\n--- 株主情報 ---")
+            if holders.get('major_holders') and isinstance(holders['major_holders'], list):
+                print("大株主:")
+                for holder in holders['major_holders'][:3]:  # 上位3件
+                    if isinstance(holder, dict):
+                        print(f"  {holder.get('Holder', 'N/A')}: {holder.get('% of Shares', 'N/A')}%")
+    
+    # ESG情報
+    if data.get('sustainability') and isinstance(data['sustainability'], dict):
+        sustainability = data['sustainability']
+        if sustainability and not sustainability.get('error'):
+            esg = sustainability.get('esgScores', {})
+            if esg:
+                print(f"\n--- ESG情報 ---")
+                print(f"ESG総合スコア: {esg.get('totalEsg', 'N/A')}")
+                print(f"環境スコア: {esg.get('environmentScore', 'N/A')}")
+                print(f"社会スコア: {esg.get('socialScore', 'N/A')}")
+                print(f"ガバナンススコア: {esg.get('governanceScore', 'N/A')}")
+    
+    # アナリスト推奨履歴
+    if data.get('recommendations') and isinstance(data['recommendations'], list) and data['recommendations']:
+        print(f"\n--- アナリスト推奨履歴 ---")
+        for rec in data['recommendations'][:3]:  # 最新3件
+            if isinstance(rec, dict):
+                print(f"日付: {rec.get('Date', 'N/A')}, 推奨: {rec.get('To Grade', 'N/A')}")
+    
+    # 決算日
+    if data.get('earnings_dates') and isinstance(data['earnings_dates'], list) and data['earnings_dates']:
+        print(f"\n--- 決算日 ---")
+        for date_info in data['earnings_dates'][:3]:  # 最新3件
+            if isinstance(date_info, dict):
+                print(f"日付: {date_info.get('Earnings Date', 'N/A')}, EPS予想: {date_info.get('EPS Estimate', 'N/A')}")
     
     # 株価履歴
     if data.get('history') and isinstance(data['history'], list):
@@ -335,16 +419,63 @@ def lambda_handler(event, context):
                 }
             result = search_stocks_api(query, query_parameters)
         elif '/tickerDetail' in resource:
-            ticker = query_parameters.get('ticker', '').upper()
-            if not ticker:
-                return {
-                    'statusCode': 400,
-                    'headers': headers,
-                    'body': json.dumps({'error': 'ティッカーシンボルが必要です'})
-                }
+            ticker, error_response = validate_ticker_parameter(query_parameters, headers)
+            if error_response:
+                return error_response
             # periodパラメータも受け取る（history用）
             period = query_parameters.get('period', '1mo')
             result = get_stock_info_api(ticker, period)
+        elif '/basic' in resource:
+            ticker, error_response = validate_ticker_parameter(query_parameters, headers)
+            if error_response:
+                return error_response
+            result = get_stock_basic_info_api(ticker)
+        elif '/price' in resource:
+            ticker, error_response = validate_ticker_parameter(query_parameters, headers)
+            if error_response:
+                return error_response
+            result = get_stock_price_api(ticker)
+        elif '/history' in resource:
+            ticker, error_response = validate_ticker_parameter(query_parameters, headers)
+            if error_response:
+                return error_response
+            period = query_parameters.get('period', '1mo')
+            result = get_stock_history_api(ticker, period)
+        elif '/financials' in resource:
+            ticker, error_response = validate_ticker_parameter(query_parameters, headers)
+            if error_response:
+                return error_response
+            result = get_stock_financials_api(ticker)
+        elif '/analysts' in resource:
+            ticker, error_response = validate_ticker_parameter(query_parameters, headers)
+            if error_response:
+                return error_response
+            result = get_stock_analysts_api(ticker)
+        elif '/holders' in resource:
+            ticker, error_response = validate_ticker_parameter(query_parameters, headers)
+            if error_response:
+                return error_response
+            result = get_stock_holders_api(ticker)
+        elif '/events' in resource:
+            ticker, error_response = validate_ticker_parameter(query_parameters, headers)
+            if error_response:
+                return error_response
+            result = get_stock_events_api(ticker)
+        elif '/news' in resource:
+            ticker, error_response = validate_ticker_parameter(query_parameters, headers)
+            if error_response:
+                return error_response
+            result = get_stock_news_api(ticker)
+        elif '/options' in resource:
+            ticker, error_response = validate_ticker_parameter(query_parameters, headers)
+            if error_response:
+                return error_response
+            result = get_stock_options_api(ticker)
+        elif '/sustainability' in resource:
+            ticker, error_response = validate_ticker_parameter(query_parameters, headers)
+            if error_response:
+                return error_response
+            result = get_stock_sustainability_api(ticker)
         elif '/chart' in resource:
             ticker = query_parameters.get('ticker', '').upper()
             if not ticker:
@@ -516,23 +647,106 @@ def search_stocks_api(query, query_parameters):
 
 
 def get_stock_info_api(ticker, period='1mo'):
-    """銘柄の全情報をまとめて返すAPI（新yfinance API使用）"""
+    """包括的な株式情報取得API（統合版）- 各要素専用関数を呼び出し"""
+    try:
+        # 各要素専用の関数を呼び出して統合
+        basic_info = get_stock_basic_info_api(ticker)
+        price_info = get_stock_price_api(ticker)
+        history_info = get_stock_history_api(ticker, period)
+        financials_info = get_stock_financials_api(ticker)
+        analysts_info = get_stock_analysts_api(ticker)
+        holders_info = get_stock_holders_api(ticker)
+        events_info = get_stock_events_api(ticker)
+        news_info = get_stock_news_api(ticker)
+        options_info = get_stock_options_api(ticker)
+        sustainability_info = get_stock_sustainability_api(ticker)
+        
+        # 統合結果を作成
+        result = {
+            'ticker': ticker,
+            'period': period,
+            # 基本情報
+            'info': basic_info.get('info', {}),
+            'info_error': basic_info.get('info_error'),
+            'fast_info': basic_info.get('fast_info', {}),
+            'logo_url': basic_info.get('logo_url'),
+            'isin': basic_info.get('isin'),
+            # 株価情報
+            'price': price_info.get('price'),
+            # 履歴情報
+            'history': history_info.get('history', []),
+            # 財務情報
+            'financials': financials_info.get('financials', {}),
+            'earnings': financials_info.get('earnings', {}),
+            # アナリスト情報
+            'analysts': analysts_info.get('analysts', {}),
+            'recommendations': analysts_info.get('recommendations', []),
+            'analysis': analysts_info.get('analysis', {}),
+            'upgrades_downgrades': analysts_info.get('upgrades_downgrades', []),
+            # 株主情報
+            'holders': holders_info.get('holders', {}),
+            'shares': holders_info.get('shares', {}),
+            # イベント情報
+            'calendar': events_info.get('calendar', []),
+            'earnings_dates': events_info.get('earnings_dates', []),
+            'dividends': events_info.get('dividends', []),
+            'splits': events_info.get('splits', []),
+            # ニュース情報
+            'news': news_info.get('news', []),
+            # オプション情報
+            'options': options_info.get('options', []),
+            # ESG情報
+            'sustainability': sustainability_info.get('sustainability', {}),
+            # 実行情報
+            'execution_info': get_execution_info('LAMBDA'),
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        # エラーがある場合は統合
+        errors = []
+        for name, data in [
+            ('基本情報', basic_info),
+            ('株価情報', price_info),
+            ('履歴情報', history_info),
+            ('財務情報', financials_info),
+            ('アナリスト情報', analysts_info),
+            ('株主情報', holders_info),
+            ('イベント情報', events_info),
+            ('ニュース情報', news_info),
+            ('オプション情報', options_info),
+            ('ESG情報', sustainability_info)
+        ]:
+            if data.get('error'):
+                errors.append(f"{name}: {data['error']}")
+        
+        if errors:
+            result['partial_errors'] = errors
+        
+        return result
+        
+    except Exception as e:
+        return {'error': f'銘柄情報取得エラー: {str(e)}'}
+
+def get_stock_basic_info_api(ticker):
+    """基本情報取得API"""
     try:
         stock = yf.Ticker(ticker)
-
-        # 新API: 詳細情報
+        
+        # 詳細情報
         try:
             info = stock.get_info()
+            if not info or info.empty:
+                info = {}
+                info_error = "詳細情報が取得できませんでした"
+            else:
+                info_error = None
         except Exception as e:
             info = {}
-            info_error = str(e)
-        else:
-            info_error = None
+            info_error = f"詳細情報取得エラー: {str(e)}"
 
         # 高速基本情報
         try:
             fast_info = stock.get_fast_info()
-            # FastInfoオブジェクトを辞書に変換
             if hasattr(fast_info, '__dict__'):
                 fast_info_dict = {}
                 for key in dir(fast_info):
@@ -550,134 +764,144 @@ def get_stock_info_api(ticker, period='1mo'):
             fast_info = {}
 
         # ロゴURL
-        logo_url = info.get('logo_url') if info else None
-        if not logo_url:
-            website = info.get('website') if info else None
-            if website:
-                import re
-                m = re.search(r'https?://([^/]+)', website)
-                if m:
-                    logo_url = f"https://logo.clearbit.com/{m.group(1)}"
+        logo_url = None
+        try:
+            logo_url = info.get('logo_url') if info else None
+            if not logo_url:
+                website = info.get('website') if info else None
+                if website:
+                    import re
+                    m = re.search(r'https?://([^/]+)', website)
+                    if m:
+                        logo_url = f"https://logo.clearbit.com/{m.group(1)}"
+        except Exception as e:
+            logo_url = None
+
+        # ISIN
+        isin = None
+        try:
+            isin = stock.get_isin()
+        except Exception as e:
+            isin = {'error': f'ISIN取得エラー: {str(e)}'}
+
+        result = {
+            'ticker': ticker,
+            'info': info,
+            'info_error': info_error,
+            'fast_info': fast_info,
+            'logo_url': logo_url,
+            'isin': isin,
+            'execution_info': get_execution_info('LAMBDA'),
+            'timestamp': datetime.now().isoformat()
+        }
+        return result
+    except Exception as e:
+        return {'error': f'基本情報取得エラー: {str(e)}'}
+
+def get_stock_price_api(ticker):
+    """株価情報取得API"""
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # 詳細情報と高速情報を取得
+        try:
+            info = stock.get_info()
+        except:
+            info = {}
+        
+        try:
+            fast_info = stock.get_fast_info()
+            if hasattr(fast_info, '__dict__'):
+                fast_info_dict = {}
+                for key in dir(fast_info):
+                    if not key.startswith('_') and not callable(getattr(fast_info, key)):
+                        try:
+                            value = getattr(fast_info, key)
+                            if value is not None:
+                                fast_info_dict[key] = float(value) if isinstance(value, (int, float)) else str(value)
+                        except:
+                            pass
+                fast_info = fast_info_dict
+            else:
+                fast_info = {}
+        except:
+            fast_info = {}
 
         # 株価情報
-        current_price = fast_info.get('last_price') or info.get('currentPrice') if info else None
-        previous_close = fast_info.get('previous_close') or info.get('previousClose') if info else None
         price = None
-        if current_price is not None:
-            price = {
-                'current_price': round(float(current_price), 2),
-                'currency': fast_info.get('financial_currency') or info.get('currency', 'USD') if info else 'USD',
-                'timestamp': datetime.now().isoformat()
-            }
-            if previous_close is not None:
-                previous_close = float(previous_close)
-                diff = current_price - previous_close
-                price['previous_close'] = round(previous_close, 2)
-                price['price_change'] = round(diff, 2)
-                price['price_change_percent'] = round(diff / previous_close * 100, 2)
-                price['price_change_direction'] = 'up' if diff > 0 else 'down' if diff < 0 else 'unchanged'
+        try:
+            current_price = fast_info.get('last_price') or info.get('currentPrice') if info else None
+            previous_close = fast_info.get('previous_close') or info.get('previousClose') if info else None
+            
+            if current_price is not None:
+                price = {
+                    'current_price': round(float(current_price), 2),
+                    'currency': fast_info.get('financial_currency') or info.get('currency', 'USD') if info else 'USD',
+                    'timestamp': datetime.now().isoformat()
+                }
+                if previous_close is not None:
+                    previous_close = float(previous_close)
+                    diff = current_price - previous_close
+                    price['previous_close'] = round(previous_close, 2)
+                    price['price_change'] = round(diff, 2)
+                    price['price_change_percent'] = round(diff / previous_close * 100, 2)
+                    price['price_change_direction'] = 'up' if diff > 0 else 'down' if diff < 0 else 'unchanged'
+        except Exception as e:
+            price = {'error': f'価格情報取得エラー: {str(e)}'}
 
-        # 履歴（期間をパラメータで指定可能）
+        result = {
+            'ticker': ticker,
+            'price': price,
+            'execution_info': get_execution_info('LAMBDA'),
+            'timestamp': datetime.now().isoformat()
+        }
+        return result
+    except Exception as e:
+        return {'error': f'株価情報取得エラー: {str(e)}'}
+
+def get_stock_history_api(ticker, period='1mo'):
+    """株価履歴取得API"""
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # 履歴
+        history = []
         try:
             valid_periods = ['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max']
             if period not in valid_periods:
                 period = '1mo'
             
             hist_df = stock.history(period=period)
-            history = [{
-                'date': idx.strftime('%Y-%m-%d'),
-                'open': round(float(row['Open']), 2),
-                'high': round(float(row['High']), 2),
-                'low': round(float(row['Low']), 2),
-                'close': round(float(row['Close']), 2),
-                'volume': int(row['Volume'])
-            } for idx, row in hist_df.iterrows()]
+            if not hist_df.empty:
+                history = [{
+                    'date': idx.strftime('%Y-%m-%d'),
+                    'open': round(float(row['Open']), 2),
+                    'high': round(float(row['High']), 2),
+                    'low': round(float(row['Low']), 2),
+                    'close': round(float(row['Close']), 2),
+                    'volume': int(row['Volume'])
+                } for idx, row in hist_df.iterrows()]
         except Exception as e:
-            history = f'履歴データ取得エラー: {str(e)}'
+            history = {'error': f'履歴データ取得エラー: {str(e)}'}
 
-        # ニュース
-        try:
-            news = stock.get_news() or []
-        except Exception as e:
-            news = f'ニュース取得エラー: {str(e)}'
+        result = {
+            'ticker': ticker,
+            'period': period,
+            'history': history,
+            'execution_info': get_execution_info('LAMBDA'),
+            'timestamp': datetime.now().isoformat()
+        }
+        return result
+    except Exception as e:
+        return {'error': f'株価履歴取得エラー: {str(e)}'}
 
-        # 配当
-        try:
-            dividends_series = stock.get_dividends()
-            dividends = [{
-                'date': idx.strftime('%Y-%m-%d'),
-                'amount': float(val)
-            } for idx, val in dividends_series.items()] if not dividends_series.empty else []
-        except Exception as e:
-            dividends = f'配当情報取得エラー: {str(e)}'
-
-        # オプション（従来通り）
-        try:
-            options_dates = stock.options
-            if options_dates:
-                expiry = options_dates[0]
-                chain = stock.option_chain(expiry)
-                calls_data = [{
-                    'strike': float(r['strike']),
-                    'last_price': float(r['lastPrice']),
-                    'bid': float(r['bid']),
-                    'ask': float(r['ask']),
-                    'volume': int(r['volume']),
-                    'open_interest': int(r['openInterest'])
-                } for _, r in chain.calls.iterrows()]
-                puts_data = [{
-                    'strike': float(r['strike']),
-                    'last_price': float(r['lastPrice']),
-                    'bid': float(r['bid']),
-                    'ask': float(r['ask']),
-                    'volume': int(r['volume']),
-                    'open_interest': int(r['openInterest'])
-                } for _, r in chain.puts.iterrows()]
-                options_data = {'expiry_date': expiry, 'calls': calls_data, 'puts': puts_data}
-            else:
-                options_data = []
-        except Exception as e:
-            options_data = f'オプション情報取得エラー: {str(e)}'
-
-        # === 新しいYFinanceメソッド群 ===
+def get_stock_financials_api(ticker):
+    """財務情報取得API"""
+    try:
+        stock = yf.Ticker(ticker)
         
-        # ISIN（国際証券識別番号）
-        try:
-            isin = stock.get_isin()
-        except Exception as e:
-            isin = f'ISIN取得エラー: {str(e)}'
-
-        # アナリスト推奨履歴
-        try:
-            recommendations = stock.get_recommendations()
-            if not recommendations.empty:
-                recommendations_data = safe_dataframe_to_records(recommendations)
-            else:
-                recommendations_data = []
-        except Exception as e:
-            recommendations_data = f'推奨履歴取得エラー: {str(e)}'
-
-        # カレンダー（決算日など）
-        try:
-            calendar = stock.get_calendar()
-            if not calendar.empty:
-                calendar_data = safe_dataframe_to_records(calendar)
-            else:
-                calendar_data = []
-        except Exception as e:
-            calendar_data = f'カレンダー取得エラー: {str(e)}'
-
-        # 決算日
-        try:
-            earnings_dates = stock.get_earnings_dates()
-            if not earnings_dates.empty:
-                earnings_dates_data = safe_dataframe_to_records(earnings_dates)
-            else:
-                earnings_dates_data = []
-        except Exception as e:
-            earnings_dates_data = f'決算日取得エラー: {str(e)}'
-
-        # 財務諸表（新メソッド使用）
+        # 財務諸表
+        financials = {}
         try:
             # 損益計算書
             income_stmt = stock.get_income_stmt()
@@ -706,19 +930,101 @@ def get_stock_info_api(ticker, period='1mo'):
                 'cashflow': cashflow_data
             }
         except Exception as e:
-            financials = f'財務情報取得エラー: {str(e)}'
+            financials = {'error': f'財務情報取得エラー: {str(e)}'}
 
-        # ESG情報
+        # 決算情報
+        earnings = {}
         try:
-            sustainability = stock.get_sustainability()
-            if not sustainability.empty:
-                sustainability_data = safe_dataframe_to_dict(sustainability)
-            else:
-                sustainability_data = {}
+            info = stock.get_info()
+            if info:
+                earnings_keys = ['trailingEps', 'forwardEps', 'trailingPE', 'forwardPE', 'pegRatio']
+                for key in earnings_keys:
+                    if key in info and info[key] is not None:
+                        earnings[key] = info[key]
         except Exception as e:
-            sustainability_data = f'ESG情報取得エラー: {str(e)}'
+            earnings = {'error': f'決算情報取得エラー: {str(e)}'}
 
+        result = {
+            'ticker': ticker,
+            'financials': financials,
+            'earnings': earnings,
+            'execution_info': get_execution_info('LAMBDA'),
+            'timestamp': datetime.now().isoformat()
+        }
+        return result
+    except Exception as e:
+        return {'error': f'財務情報取得エラー: {str(e)}'}
+
+def get_stock_analysts_api(ticker):
+    """アナリスト情報取得API"""
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # アナリスト予想
+        analysts = {}
+        try:
+            info = stock.get_info()
+            if info:
+                if 'recommendationMean' in info:
+                    analysts['recommendation_mean'] = info['recommendationMean']
+                if 'targetMeanPrice' in info:
+                    analysts['target_mean_price'] = info['targetMeanPrice']
+                if 'numberOfAnalystOpinions' in info:
+                    analysts['number_of_analysts'] = info['numberOfAnalystOpinions']
+                keys = ['strongBuy', 'buy', 'hold', 'sell', 'strongSell']
+                ratings = {k: info[k] for k in keys if k in info}
+                if ratings:
+                    analysts['rating_distribution'] = ratings
+        except Exception as e:
+            analysts = {'error': f'アナリスト予想取得エラー: {str(e)}'}
+
+        # アナリスト推奨履歴
+        recommendations_data = []
+        try:
+            recommendations = stock.get_recommendations()
+            if not recommendations.empty:
+                recommendations_data = safe_dataframe_to_records(recommendations)
+        except Exception as e:
+            recommendations_data = {'error': f'推奨履歴取得エラー: {str(e)}'}
+
+        # アナリスト分析
+        analysis_data = {}
+        try:
+            analysis = stock.get_analysis()
+            if not analysis.empty:
+                analysis_data = safe_dataframe_to_dict(analysis)
+        except Exception as e:
+            analysis_data = {'error': f'アナリスト分析取得エラー: {str(e)}'}
+
+        # 格付け変更履歴
+        upgrades_downgrades_data = []
+        try:
+            upgrades_downgrades = stock.get_upgrades_downgrades()
+            if not upgrades_downgrades.empty:
+                upgrades_downgrades_data = safe_dataframe_to_records(upgrades_downgrades)
+        except Exception as e:
+            upgrades_downgrades_data = {'error': f'格付け変更履歴取得エラー: {str(e)}'}
+
+        result = {
+            'ticker': ticker,
+            'analysts': analysts,
+            'recommendations': recommendations_data,
+            'analysis': analysis_data,
+            'upgrades_downgrades': upgrades_downgrades_data,
+            'execution_info': get_execution_info('LAMBDA'),
+            'timestamp': datetime.now().isoformat()
+        }
+        return result
+    except Exception as e:
+        return {'error': f'アナリスト情報取得エラー: {str(e)}'}
+
+def get_stock_holders_api(ticker):
+    """株主情報取得API"""
+    try:
+        stock = yf.Ticker(ticker)
+        
         # 株主情報
+        holders_data = {}
         try:
             # 大株主
             major_holders = stock.get_major_holders()
@@ -747,84 +1053,179 @@ def get_stock_info_api(ticker, period='1mo'):
                 'mutualfund_holders': mutualfund_holders_data
             }
         except Exception as e:
-            holders_data = f'株主情報取得エラー: {str(e)}'
+            holders_data = {'error': f'株主情報取得エラー: {str(e)}'}
 
         # 株式数詳細
+        shares_data = {}
         try:
             shares = stock.get_shares()
             if not shares.empty:
                 shares_data = safe_dataframe_to_dict(shares)
-            else:
-                shares_data = {}
         except Exception as e:
-            shares_data = f'株式数取得エラー: {str(e)}'
-
-        # アナリスト分析
-        try:
-            analysis = stock.get_analysis()
-            if not analysis.empty:
-                analysis_data = safe_dataframe_to_dict(analysis)
-            else:
-                analysis_data = {}
-        except Exception as e:
-            analysis_data = f'アナリスト分析取得エラー: {str(e)}'
-
-        # 格付け変更履歴
-        try:
-            upgrades_downgrades = stock.get_upgrades_downgrades()
-            if not upgrades_downgrades.empty:
-                upgrades_downgrades_data = safe_dataframe_to_records(upgrades_downgrades)
-            else:
-                upgrades_downgrades_data = []
-        except Exception as e:
-            upgrades_downgrades_data = f'格付け変更履歴取得エラー: {str(e)}'
-
-        # アナリスト予想（従来）
-        try:
-            analysts = {}
-            if info:
-                if 'recommendationMean' in info:
-                    analysts['recommendation_mean'] = info['recommendationMean']
-                if 'targetMeanPrice' in info:
-                    analysts['target_mean_price'] = info['targetMeanPrice']
-                if 'numberOfAnalystOpinions' in info:
-                    analysts['number_of_analysts'] = info['numberOfAnalystOpinions']
-                keys = ['strongBuy', 'buy', 'hold', 'sell', 'strongSell']
-                ratings = {k: info[k] for k in keys if k in info}
-                if ratings:
-                    analysts['rating_distribution'] = ratings
-        except Exception as e:
-            analysts = f'アナリスト予想取得エラー: {str(e)}'
+            shares_data = {'error': f'株式数取得エラー: {str(e)}'}
 
         result = {
             'ticker': ticker,
-            'info': info,
-            'info_error': info_error,
-            'fast_info': fast_info,
-            'logo_url': logo_url,
-            'price': price,
-            'history': history,
-            'news': news,
-            'dividends': dividends,
-            'options': options_data,
-            'financials': financials,
-            'analysts': analysts,
-            # 新しいYFinanceメソッド
-            'isin': isin,
-            'recommendations': recommendations_data,
-            'calendar': calendar_data,
-            'earnings_dates': earnings_dates_data,
-            'sustainability': sustainability_data,
             'holders': holders_data,
             'shares': shares_data,
-            'analysis': analysis_data,
-            'upgrades_downgrades': upgrades_downgrades_data,
+            'execution_info': get_execution_info('LAMBDA'),
             'timestamp': datetime.now().isoformat()
         }
         return result
     except Exception as e:
-        return {'error': f'銘柄情報取得エラー: {str(e)}'}
+        return {'error': f'株主情報取得エラー: {str(e)}'}
 
+def get_stock_events_api(ticker):
+    """イベント情報取得API"""
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # カレンダー（決算日など）
+        calendar_data = []
+        try:
+            calendar = stock.get_calendar()
+            if not calendar.empty:
+                calendar_data = safe_dataframe_to_records(calendar)
+        except Exception as e:
+            calendar_data = {'error': f'カレンダー取得エラー: {str(e)}'}
+
+        # 決算日
+        earnings_dates_data = []
+        try:
+            earnings_dates = stock.get_earnings_dates()
+            if not earnings_dates.empty:
+                earnings_dates_data = safe_dataframe_to_records(earnings_dates)
+        except Exception as e:
+            earnings_dates_data = {'error': f'決算日取得エラー: {str(e)}'}
+
+        # 配当
+        dividends = []
+        try:
+            dividends_series = stock.get_dividends()
+            if not dividends_series.empty:
+                dividends = [{
+                    'date': idx.strftime('%Y-%m-%d'),
+                    'amount': float(val)
+                } for idx, val in dividends_series.items()]
+        except Exception as e:
+            dividends = {'error': f'配当情報取得エラー: {str(e)}'}
+
+        # 株式分割
+        splits = []
+        try:
+            splits_series = stock.get_splits()
+            if not splits_series.empty:
+                splits = [{
+                    'date': idx.strftime('%Y-%m-%d'),
+                    'ratio': float(val)
+                } for idx, val in splits_series.items()]
+        except Exception as e:
+            splits = {'error': f'株式分割取得エラー: {str(e)}'}
+
+        result = {
+            'ticker': ticker,
+            'calendar': calendar_data,
+            'earnings_dates': earnings_dates_data,
+            'dividends': dividends,
+            'splits': splits,
+            'execution_info': get_execution_info('LAMBDA'),
+            'timestamp': datetime.now().isoformat()
+        }
+        return result
+    except Exception as e:
+        return {'error': f'イベント情報取得エラー: {str(e)}'}
+
+def get_stock_news_api(ticker):
+    """ニュース情報取得API"""
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # ニュース
+        news = []
+        try:
+            news_data = stock.get_news()
+            if news_data and not news_data.empty:
+                news = safe_dataframe_to_records(news_data)
+            elif isinstance(news_data, list):
+                news = news_data
+        except Exception as e:
+            news = {'error': f'ニュース取得エラー: {str(e)}'}
+
+        result = {
+            'ticker': ticker,
+            'news': news,
+            'execution_info': get_execution_info('LAMBDA'),
+            'timestamp': datetime.now().isoformat()
+        }
+        return result
+    except Exception as e:
+        return {'error': f'ニュース情報取得エラー: {str(e)}'}
+
+def get_stock_options_api(ticker):
+    """オプション情報取得API"""
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # オプション
+        options_data = []
+        try:
+            options_dates = stock.options
+            if options_dates:
+                expiry = options_dates[0]
+                chain = stock.option_chain(expiry)
+                calls_data = [{
+                    'strike': float(r['strike']),
+                    'last_price': float(r['lastPrice']),
+                    'bid': float(r['bid']),
+                    'ask': float(r['ask']),
+                    'volume': int(r['volume']),
+                    'open_interest': int(r['openInterest'])
+                } for _, r in chain.calls.iterrows()]
+                puts_data = [{
+                    'strike': float(r['strike']),
+                    'last_price': float(r['lastPrice']),
+                    'bid': float(r['bid']),
+                    'ask': float(r['ask']),
+                    'volume': int(r['volume']),
+                    'open_interest': int(r['openInterest'])
+                } for _, r in chain.puts.iterrows()]
+                options_data = {'expiry_date': expiry, 'calls': calls_data, 'puts': puts_data}
+        except Exception as e:
+            options_data = {'error': f'オプション情報取得エラー: {str(e)}'}
+
+        result = {
+            'ticker': ticker,
+            'options': options_data,
+            'execution_info': get_execution_info('LAMBDA'),
+            'timestamp': datetime.now().isoformat()
+        }
+        return result
+    except Exception as e:
+        return {'error': f'オプション情報取得エラー: {str(e)}'}
+
+def get_stock_sustainability_api(ticker):
+    """ESG情報取得API"""
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # ESG情報
+        sustainability_data = {}
+        try:
+            sustainability = stock.get_sustainability()
+            if not sustainability.empty:
+                sustainability_data = safe_dataframe_to_dict(sustainability)
+        except Exception as e:
+            sustainability_data = {'error': f'ESG情報取得エラー: {str(e)}'}
+
+        result = {
+            'ticker': ticker,
+            'sustainability': sustainability_data,
+            'execution_info': get_execution_info('LAMBDA'),
+            'timestamp': datetime.now().isoformat()
+        }
+        return result
+    except Exception as e:
+        return {'error': f'ESG情報取得エラー: {str(e)}'}
 
 
 def get_api_gateway_url(event=None, context=None):
@@ -1090,9 +1491,21 @@ def generate_swagger_ui_html(event=None, context=None):
                                                 "type": "object",
                                                 "description": "アナリスト分析"
                                             },
+                                            "splits": {
+                                                "type": "array",
+                                                "description": "株式分割履歴"
+                                            },
+                                            "earnings": {
+                                                "type": "object",
+                                                "description": "決算情報（EPS、P/E比など）"
+                                            },
                                             "upgrades_downgrades": {
                                                 "type": "array",
                                                 "description": "格付け変更履歴"
+                                            },
+                                            "execution_info": {
+                                                "type": "object",
+                                                "description": "実行環境情報"
                                             },
                                             "timestamp": {
                                                 "type": "string", 

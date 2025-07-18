@@ -14,6 +14,16 @@ from typing import Optional, Dict, Any
 from lambda_function import (
     get_stock_info_api,
     search_stocks_api,
+    get_stock_basic_info_api,
+    get_stock_price_api,
+    get_stock_history_api,
+    get_stock_financials_api,
+    get_stock_analysts_api,
+    get_stock_holders_api,
+    get_stock_events_api,
+    get_stock_news_api,
+    get_stock_options_api,
+    get_stock_sustainability_api,
     get_api_gateway_url,
     # 共通関数をインポート（重複回避）
     format_currency,
@@ -97,8 +107,17 @@ def main():
         epilog="""
 使用例:
   %(prog)s search apple US          # Appleを検索
-  %(prog)s info AAPL 1mo            # AAPLの1ヶ月データ
+  %(prog)s info AAPL 1mo            # AAPLの1ヶ月データ（統合版）
   %(prog)s basic AAPL               # AAPLの基本情報
+  %(prog)s price AAPL               # AAPLの株価情報
+  %(prog)s history AAPL 1y          # AAPLの1年履歴
+  %(prog)s financials AAPL          # AAPLの財務情報
+  %(prog)s analysts AAPL            # AAPLのアナリスト情報
+  %(prog)s holders AAPL             # AAPLの株主情報
+  %(prog)s events AAPL              # AAPLのイベント情報
+  %(prog)s news AAPL                # AAPLのニュース情報
+  %(prog)s options AAPL             # AAPLのオプション情報
+  %(prog)s sustainability AAPL      # AAPLのESG情報
   %(prog)s search toyota JP         # トヨタを日本で検索
   %(prog)s search apple US --json   # JSON形式で出力
   %(prog)s info AAPL 1mo --json     # JSON形式で出力
@@ -128,6 +147,45 @@ def main():
     # 基本情報コマンド
     basic_parser = subparsers.add_parser('basic', help='基本情報を表示')
     basic_parser.add_argument('ticker', help='ティッカーシンボル')
+    
+    # 株価情報コマンド
+    price_parser = subparsers.add_parser('price', help='株価情報を取得')
+    price_parser.add_argument('ticker', help='ティッカーシンボル')
+    
+    # 履歴情報コマンド
+    history_parser = subparsers.add_parser('history', help='株価履歴を取得')
+    history_parser.add_argument('ticker', help='ティッカーシンボル')
+    history_parser.add_argument('--period', default='1mo',
+                               choices=['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max'],
+                               help='取得期間（デフォルト: 1mo）')
+    
+    # 財務情報コマンド
+    financials_parser = subparsers.add_parser('financials', help='財務情報を取得')
+    financials_parser.add_argument('ticker', help='ティッカーシンボル')
+    
+    # アナリスト情報コマンド
+    analysts_parser = subparsers.add_parser('analysts', help='アナリスト情報を取得')
+    analysts_parser.add_argument('ticker', help='ティッカーシンボル')
+    
+    # 株主情報コマンド
+    holders_parser = subparsers.add_parser('holders', help='株主情報を取得')
+    holders_parser.add_argument('ticker', help='ティッカーシンボル')
+    
+    # イベント情報コマンド
+    events_parser = subparsers.add_parser('events', help='イベント情報を取得')
+    events_parser.add_argument('ticker', help='ティッカーシンボル')
+    
+    # ニュース情報コマンド
+    news_parser = subparsers.add_parser('news', help='ニュース情報を取得')
+    news_parser.add_argument('ticker', help='ティッカーシンボル')
+    
+    # オプション情報コマンド
+    options_parser = subparsers.add_parser('options', help='オプション情報を取得')
+    options_parser.add_argument('ticker', help='ティッカーシンボル')
+    
+    # ESG情報コマンド
+    sustainability_parser = subparsers.add_parser('sustainability', help='ESG情報を取得')
+    sustainability_parser.add_argument('ticker', help='ティッカーシンボル')
     
     args = parser.parse_args()
     
@@ -175,8 +233,120 @@ def main():
             print(f"\n基本情報取得: {args.ticker}")
             print("-" * 25)
         
-        # 基本情報は現在JSON出力に対応していないため、通常表示
-        display_basic_info(args.ticker)
+        data = get_stock_basic_info_api(args.ticker)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'price':
+        if not args.json:
+            print(f"\n株価情報取得: {args.ticker}")
+            print("-" * 25)
+        
+        data = get_stock_price_api(args.ticker)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'history':
+        if not args.json:
+            print(f"\n履歴情報取得: {args.ticker} (期間: {args.period})")
+            print("-" * 35)
+        
+        data = get_stock_history_api(args.ticker, args.period)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'financials':
+        if not args.json:
+            print(f"\n財務情報取得: {args.ticker}")
+            print("-" * 25)
+        
+        data = get_stock_financials_api(args.ticker)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'analysts':
+        if not args.json:
+            print(f"\nアナリスト情報取得: {args.ticker}")
+            print("-" * 30)
+        
+        data = get_stock_analysts_api(args.ticker)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'holders':
+        if not args.json:
+            print(f"\n株主情報取得: {args.ticker}")
+            print("-" * 25)
+        
+        data = get_stock_holders_api(args.ticker)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'events':
+        if not args.json:
+            print(f"\nイベント情報取得: {args.ticker}")
+            print("-" * 30)
+        
+        data = get_stock_events_api(args.ticker)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'news':
+        if not args.json:
+            print(f"\nニュース情報取得: {args.ticker}")
+            print("-" * 30)
+        
+        data = get_stock_news_api(args.ticker)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'options':
+        if not args.json:
+            print(f"\nオプション情報取得: {args.ticker}")
+            print("-" * 30)
+        
+        data = get_stock_options_api(args.ticker)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'sustainability':
+        if not args.json:
+            print(f"\nESG情報取得: {args.ticker}")
+            print("-" * 25)
+        
+        data = get_stock_sustainability_api(args.ticker)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
     
     else:
         parser.print_help()
