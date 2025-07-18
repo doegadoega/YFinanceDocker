@@ -46,11 +46,11 @@ Resources:
             RestApiId: !Ref YFinanceApi
             Path: /search
             Method: get
-        GetInfo:
+        GetTickerDetail:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /info
+            Path: /tickerDetail
             Method: get
         GetChart:
           Type: Api

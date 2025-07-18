@@ -118,7 +118,7 @@ aws cloudformation deploy --template-file template.yaml --stack-name yfinance-st
 
 # API Gateway経由でアクセス
 curl "https://your-api-gateway-url/prod/search?q=apple&region=US"
-curl "https://your-api-gateway-url/prod/info?ticker=AAPL&period=1mo"
+curl "https://your-api-gateway-url/prod/tickerDetail?ticker=AAPL&period=1mo"
 ```
 
 ### 4. ローカルHTTPサーバー

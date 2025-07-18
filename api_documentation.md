@@ -42,7 +42,7 @@ curl "https://your-api-gateway-url/prod/price/AAPL"
 
 株式の詳細情報を取得します。
 
-**エンドポイント:** `GET /info/{ticker}`
+**エンドポイント:** `GET /tickerDetail/{ticker}`
 
 **パラメータ:**
 - `ticker` (required): ティッカーシンボル
@@ -69,7 +69,7 @@ curl "https://your-api-gateway-url/prod/price/AAPL"
 
 **cURLサンプル:**
 ```bash
-curl "https://your-api-gateway-url/prod/info/AAPL"
+curl "https://your-api-gateway-url/prod/tickerDetail/AAPL"
 ```
 
 ### 3. 株価履歴取得 API
@@ -163,7 +163,7 @@ async function getStockPrice(ticker) {
 
 // 詳細情報取得
 async function getStockInfo(ticker) {
-  const response = await fetch(`https://your-api-gateway-url/prod/info/${ticker}`);
+  const response = await fetch(`https://your-api-gateway-url/prod/tickerDetail/${ticker}`);
   const data = await response.json();
   return data;
 }
@@ -190,7 +190,7 @@ def get_stock_price(ticker):
 
 # 詳細情報取得
 def get_stock_info(ticker):
-    response = requests.get(f"{base_url}/info/{ticker}")
+    response = requests.get(f"{base_url}/tickerDetail/{ticker}")
     return response.json()
 
 # 履歴データ取得

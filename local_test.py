@@ -50,7 +50,7 @@ class YFinanceHandler(BaseHTTPRequestHandler):
                 
                 self._send_json_response(result)
                 
-            elif path.startswith('/info'):
+            elif path.startswith('/tickerDetail'):
                 # 包括的情報API（Lambda関数直接使用）
                 ticker = query_params.get('ticker', [''])[0].upper()
                 period = query_params.get('period', ['1mo'])[0]
@@ -199,7 +199,7 @@ class YFinanceHandler(BaseHTTPRequestHandler):
             const ticker = document.getElementById('infoTicker').value;
             const period = document.getElementById('infoPeriod').value;
             try {{
-                const response = await fetch(`/info?ticker=${{ticker}}&period=${{period}}`);
+                const response = await fetch(`/tickerDetail?ticker=${{ticker}}&period=${{period}}`);
                 const data = await response.json();
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
             }} catch (error) {{

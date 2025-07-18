@@ -334,7 +334,7 @@ def lambda_handler(event, context):
                     'body': json.dumps({'error': '検索クエリが必要です'})
                 }
             result = search_stocks_api(query, query_parameters)
-        elif '/info' in resource:
+        elif '/tickerDetail' in resource:
             ticker = query_parameters.get('ticker', '').upper()
             if not ticker:
                 return {
@@ -985,7 +985,7 @@ def generate_swagger_ui_html(event=None, context=None):
                     }
                 }
             },
-            "/info": {
+            "/tickerDetail": {
                 "get": {
                     "summary": "詳細情報取得（統合版）",
                     "description": "指定されたティッカーシンボルの全ての情報を統合して取得します（価格、履歴、ニュース、配当、オプション、財務、ESG、株主情報など）",

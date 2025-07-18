@@ -268,7 +268,7 @@ def test_unified_features():
     
     for i in range(3):
         try:
-            response = requests.get(f"{API_BASE_URL}/info", params={"ticker": ticker}, timeout=30)
+            response = requests.get(f"{API_BASE_URL}/tickerDetail", params={"ticker": ticker}, timeout=30)
             if response.status_code == 200:
                 data = response.json()
                 if not data.get('error'):
@@ -318,7 +318,7 @@ def main():
     print("テスト完了")
     print(f"\nテスト対象API:")
     print(f"• 検索: {API_BASE_URL}/search")
-    print(f"• 包括的データ: {API_BASE_URL}/info")
+    print(f"• 包括的データ: {API_BASE_URL}/tickerDetail")
     print(f"• チャートデータ: {API_BASE_URL}/chart")
     print(f"\n統一された特徴:")
     print(f"• Lambda関数を直接使用して完全統一")
