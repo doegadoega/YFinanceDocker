@@ -92,7 +92,7 @@ def test_remote_api():
     for ticker in test_tickers_remote:
         print(f"\n包括的情報テスト: {ticker}")
         try:
-            url = f"{API_BASE_URL}/info"
+            url = f"{API_BASE_URL}/tickerDetail"
             params = {"ticker": ticker}
             response = requests.get(url, params=params, timeout=30)
             
@@ -133,7 +133,7 @@ def test_lambda_handler_local():
         },
         {
             "httpMethod": "GET", 
-            "path": "/info",
+            "path": "/tickerDetail",
             "queryStringParameters": {"ticker": "AAPL"}
         },
         {
@@ -156,7 +156,7 @@ def test_lambda_handler_local():
                 body = json.loads(response['body'])
                 if event['path'] == '/search':
                     print(f"検索結果: {body.get('count', 0)} 件")
-                elif event['path'] == '/info':
+                elif event['path'] == '/tickerDetail':
                     if 'error' in body:
                         print(f"エラー: {body['error']}")
                     else:
@@ -197,7 +197,7 @@ def test_performance_comparison():
     print(f"\nリモート実行テスト: {test_ticker}")
     start_time = time.time()
     try:
-        url = f"{API_BASE_URL}/info"
+        url = f"{API_BASE_URL}/tickerDetail"
         params = {"ticker": test_ticker}
         response = requests.get(url, params=params, timeout=30)
         remote_time = time.time() - start_time
@@ -258,7 +258,7 @@ def main():
     print("テスト完了")
     print(f"\nAPI エンドポイント:")
     print(f"• 検索: {API_BASE_URL}/search")
-    print(f"• 包括的データ: {API_BASE_URL}/info")
+    print(f"• 包括的データ: {API_BASE_URL}/tickerDetail")
     print(f"• チャートデータ: {API_BASE_URL}/chart")
 
 if __name__ == "__main__":

@@ -14,9 +14,11 @@ from lambda_function import (
     search_stocks_api,
     get_execution_info
 )
+import requests
 
 # 実行モード設定
 EXECUTION_MODE = os.getenv('EXECUTION_MODE', 'LOCAL')
+API_BASE_URL = 'http://localhost:8000' # ローカルサーバーのベースURL
 
 class YFinanceHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -50,7 +52,7 @@ class YFinanceHandler(BaseHTTPRequestHandler):
                 
                 self._send_json_response(result)
                 
-            elif path.startswith('/info'):
+            elif path.startswith('/tickerDetail'):
                 # 包括的情報API（Lambda関数直接使用）
                 ticker = query_params.get('ticker', [''])[0].upper()
                 period = query_params.get('period', ['1mo'])[0]
@@ -199,7 +201,7 @@ class YFinanceHandler(BaseHTTPRequestHandler):
             const ticker = document.getElementById('infoTicker').value;
             const period = document.getElementById('infoPeriod').value;
             try {{
-                const response = await fetch(`/info?ticker=${{ticker}}&period=${{period}}`);
+                const response = await fetch(`/tickerDetail?ticker=${{ticker}}&period=${{period}}`);
                 const data = await response.json();
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
             }} catch (error) {{
@@ -232,5 +234,149 @@ def main():
         httpd.shutdown()
 
 
+def test_basic_functionality():
+    """基本的な機能のテスト"""
+    print("\n=== 基本的な機能テスト ===")
+    try:
+        response = requests.get(f'{API_BASE_URL}/search?q=apple&region=US')
+        if response.status_code == 200:
+            data = response.json()
+            print("✅ 検索API: 正常に動作")
+            if 'error' in data:
+                print(f"⚠️  エラー: {data['error']}")
+            else:
+                print(f"🔄 実行環境: {data['execution_info']['environment']}")
+        else:
+            print(f"❌ 検索APIエラー: {response.status_code}")
+            print(response.text)
+
+        response = requests.get(f'{API_BASE_URL}/tickerDetail?ticker=AAPL&period=1mo')
+        if response.status_code == 200:
+            data = response.json()
+            print("✅ 包括的情報API: 正常に動作")
+            if 'error' in data:
+                print(f"⚠️  エラー: {data['error']}")
+            else:
+                print(f"🔄 実行環境: {data['execution_info']['environment']}")
+        else:
+            print(f"❌ 包括的情報APIエラー: {response.status_code}")
+            print(response.text)
+
+    except Exception as e:
+        print(f"❌ 基本的な機能テスト例外: {str(e)}")
+
+def test_all_endpoints(ticker='AAPL'):
+    """全てのエンドポイントをテスト"""
+    print(f"\n=== {ticker} の全エンドポイントテスト ===")
+    
+    endpoints = [
+        ('/basic', '基本情報'),
+        ('/price', '株価情報'),
+        ('/history', '株価履歴'),
+        ('/financials', '財務情報'),
+        ('/analysts', 'アナリスト情報'),
+        ('/holders', '株主情報'),
+        ('/events', 'イベント情報'),
+        ('/news', 'ニュース情報'),
+        ('/options', 'オプション情報'),
+        ('/sustainability', 'ESG情報'),
+        ('/tickerDetail', '詳細情報（統合）'),
+        ('/chart', 'チャート画像')
+    ]
+    
+    for endpoint, description in endpoints:
+        print(f"\n--- {description} ({endpoint}) ---")
+        try:
+            if endpoint == '/history':
+                response = requests.get(f'{API_BASE_URL}{endpoint}', params={'ticker': ticker, 'period': '1mo'})
+            else:
+                response = requests.get(f'{API_BASE_URL}{endpoint}', params={'ticker': ticker})
+            
+            if response.status_code == 200:
+                data = response.json()
+                print(f"✅ 成功: {len(str(data))} 文字のデータ")
+                if 'error' in data:
+                    print(f"⚠️  エラー: {data['error']}")
+                elif 'execution_info' in data:
+                    print(f"🔄 実行環境: {data['execution_info']['environment']}")
+            else:
+                print(f"❌ エラー: {response.status_code}")
+                print(response.text)
+        except Exception as e:
+            print(f"❌ 例外: {str(e)}")
+
+def test_specific_endpoint(endpoint, ticker='AAPL', **params):
+    """特定のエンドポイントをテスト"""
+    print(f"\n=== {endpoint} エンドポイントテスト ===")
+    print(f"ティッカー: {ticker}")
+    if params:
+        print(f"パラメータ: {params}")
+    
+    try:
+        all_params = {'ticker': ticker, **params}
+        response = requests.get(f'{API_BASE_URL}{endpoint}', params=all_params)
+        
+        print(f"ステータスコード: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            print("✅ レスポンス成功")
+            print(f"データサイズ: {len(str(data))} 文字")
+            
+            if 'error' in data:
+                print(f"⚠️  エラー: {data['error']}")
+            else:
+                # 主要なキーを表示
+                main_keys = [k for k in data.keys() if k not in ['execution_info', 'timestamp']]
+                print(f"主要キー: {main_keys}")
+                
+                if 'execution_info' in data:
+                    print(f"実行環境: {data['execution_info']['environment']}")
+                
+                # データの一部を表示
+                for key in main_keys[:3]:  # 最初の3つのキーのみ表示
+                    if key in data and data[key]:
+                        if isinstance(data[key], dict):
+                            print(f"{key}: {len(data[key])} 項目")
+                        elif isinstance(data[key], list):
+                            print(f"{key}: {len(data[key])} 件")
+                        else:
+                            print(f"{key}: {data[key]}")
+        else:
+            print("❌ レスポンスエラー")
+            print(response.text)
+            
+    except Exception as e:
+        print(f"❌ 例外: {str(e)}")
+
 if __name__ == "__main__":
-    main()
+    print("YFinance API ローカルテスト")
+    print("=" * 50)
+    
+    # 基本テスト
+    test_basic_functionality()
+    
+    # 全エンドポイントテスト
+    test_all_endpoints('AAPL')
+    
+    # 特定エンドポイントの詳細テスト
+    print("\n" + "=" * 50)
+    print("特定エンドポイント詳細テスト")
+    
+    # 基本情報テスト
+    test_specific_endpoint('/basic', 'AAPL')
+    
+    # 株価情報テスト
+    test_specific_endpoint('/price', 'AAPL')
+    
+    # 履歴テスト（期間指定）
+    test_specific_endpoint('/history', 'AAPL', period='1y')
+    
+    # 財務情報テスト
+    test_specific_endpoint('/financials', 'AAPL')
+    
+    # アナリスト情報テスト
+    test_specific_endpoint('/analysts', 'AAPL')
+    
+    print("\n" + "=" * 50)
+    print("テスト完了")

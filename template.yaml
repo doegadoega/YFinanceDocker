@@ -46,11 +46,71 @@ Resources:
             RestApiId: !Ref YFinanceApi
             Path: /search
             Method: get
-        GetInfo:
+        GetTickerDetail:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /info
+            Path: /tickerDetail
+            Method: get
+        GetBasic:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /basic
+            Method: get
+        GetPrice:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /price
+            Method: get
+        GetHistory:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /history
+            Method: get
+        GetFinancials:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /financials
+            Method: get
+        GetAnalysts:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /analysts
+            Method: get
+        GetHolders:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /holders
+            Method: get
+        GetEvents:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /events
+            Method: get
+        GetNews:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /news
+            Method: get
+        GetOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /options
+            Method: get
+        GetSustainability:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /sustainability
             Method: get
         GetChart:
           Type: Api
