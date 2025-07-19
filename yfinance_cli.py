@@ -24,6 +24,7 @@ from lambda_function import (
     get_stock_news_api,
     get_stock_options_api,
     get_stock_sustainability_api,
+    get_stock_home_api,
     get_api_gateway_url,
     # 共通関数をインポート（重複回避）
     format_currency,
@@ -118,6 +119,7 @@ def main():
   %(prog)s news AAPL                # AAPLのニュース情報
   %(prog)s options AAPL             # AAPLのオプション情報
   %(prog)s sustainability AAPL      # AAPLのESG情報
+  %(prog)s home                     # ホーム画面情報（株価指数、セクター情報）
   %(prog)s search toyota JP         # トヨタを日本で検索
   %(prog)s search apple US --json   # JSON形式で出力
   %(prog)s info AAPL 1mo --json     # JSON形式で出力
@@ -186,6 +188,9 @@ def main():
     # ESG情報コマンド
     sustainability_parser = subparsers.add_parser('sustainability', help='ESG情報を取得')
     sustainability_parser.add_argument('ticker', help='ティッカーシンボル')
+    
+    # ホーム情報コマンド
+    home_parser = subparsers.add_parser('home', help='ホーム画面用情報（株価指数、セクター情報）を取得')
     
     args = parser.parse_args()
     
@@ -342,6 +347,18 @@ def main():
             print("-" * 25)
         
         data = get_stock_sustainability_api(args.ticker)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'home':
+        if not args.json:
+            print(f"\nホーム画面情報取得")
+            print("-" * 25)
+        
+        data = get_stock_home_api()
         if data:
             if args.json:
                 print(json.dumps(data, indent=2, ensure_ascii=False))

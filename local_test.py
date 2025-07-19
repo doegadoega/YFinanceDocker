@@ -280,6 +280,7 @@ def test_all_endpoints(ticker='AAPL'):
         ('/news', 'ニュース情報'),
         ('/options', 'オプション情報'),
         ('/sustainability', 'ESG情報'),
+        ('/home', 'ホーム画面情報'),
         ('/tickerDetail', '詳細情報（統合）'),
         ('/chart', 'チャート画像')
     ]
@@ -377,6 +378,9 @@ if __name__ == "__main__":
     
     # アナリスト情報テスト
     test_specific_endpoint('/analysts', 'AAPL')
+    
+    # ホーム画面情報テスト
+    test_specific_endpoint('/home')
     
     print("\n" + "=" * 50)
     print("テスト完了")
