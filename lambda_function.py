@@ -1783,6 +1783,115 @@ def generate_swagger_ui_html(event=None, context=None):
                         }
                     }
                 }
+            },
+            "/basic": {
+                "get": {
+                    "summary": "基本情報取得",
+                    "description": "指定されたティッカーシンボルの基本情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル（例: AAPL, MSFT, 7203.T）", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "info": {"type": "object"}, "fast_info": {"type": "object"}, "logo_url": {"type": "string"}, "isin": {"type": "string"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/price": {
+                "get": {
+                    "summary": "株価情報取得",
+                    "description": "指定されたティッカーシンボルの現在の株価情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "price": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/history": {
+                "get": {
+                    "summary": "株価履歴取得",
+                    "description": "指定されたティッカーシンボルの株価履歴を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}},
+                        {"name": "period", "in": "query", "required": False, "description": "履歴期間（デフォルト: 1mo）", "schema": {"type": "string", "enum": ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"], "default": "1mo"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "period": {"type": "string"}, "history": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/financials": {
+                "get": {
+                    "summary": "財務情報取得",
+                    "description": "指定されたティッカーシンボルの財務諸表・決算情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "financials": {"type": "object"}, "earnings": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/analysts": {
+                "get": {
+                    "summary": "アナリスト情報取得",
+                    "description": "指定されたティッカーシンボルのアナリスト予想・分析情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "analysts": {"type": "object"}, "recommendations": {"type": "array"}, "analysis": {"type": "object"}, "upgrades_downgrades": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/holders": {
+                "get": {
+                    "summary": "株主情報取得",
+                    "description": "指定されたティッカーシンボルの株主情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "holders": {"type": "object"}, "shares": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/events": {
+                "get": {
+                    "summary": "イベント情報取得",
+                    "description": "指定されたティッカーシンボルのイベント情報（決算日、配当、分割など）を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "calendar": {"type": "array"}, "earnings_dates": {"type": "array"}, "dividends": {"type": "array"}, "splits": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/news": {
+                "get": {
+                    "summary": "ニュース情報取得",
+                    "description": "指定されたティッカーシンボルの関連ニュースを取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "news": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/options": {
+                "get": {
+                    "summary": "オプション情報取得",
+                    "description": "指定されたティッカーシンボルのオプション情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "options": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/sustainability": {
+                "get": {
+                    "summary": "ESG情報取得",
+                    "description": "指定されたティッカーシンボルのESG（環境・社会・ガバナンス）情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "sustainability": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/home": {
+                "get": {
+                    "summary": "ホーム画面情報取得",
+                    "description": "株価指数、主要ETF、セクター情報などのホーム画面用情報を取得します",
+                    "parameters": [],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"indices": {"type": "object"}, "etfs": {"type": "object"}, "sectors": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
             }
         }
     }
