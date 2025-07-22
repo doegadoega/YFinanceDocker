@@ -7,6 +7,28 @@ import pandas as pd
 import numpy as np
 from typing import Union, Dict, Any, Optional
 
+# ... 既存のimport文の下に追加 ...
+BULLISH_THRESHOLD = 0.5
+BEARISH_THRESHOLD = -0.5
+
+def get_price_change_direction(price_change):
+    if price_change is None:
+        return "unchanged"
+    if price_change > 0:
+        return "up"
+    elif price_change < 0:
+        return "down"
+    else:
+        return "unchanged"
+
+def get_market_sentiment(avg_change):
+    if avg_change > BULLISH_THRESHOLD:
+        return "bullish"
+    elif avg_change < BEARISH_THRESHOLD:
+        return "bearish"
+    else:
+        return "neutral"
+
 def serialize_for_json(obj):
     """オブジェクトをJSON serializable に変換"""
     if pd.isna(obj) or obj is None:
@@ -181,7 +203,7 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
         # 価格変化の安全な表示
         price_change = price.get('price_change')
         if price_change is not None and isinstance(price_change, (int, float)):
-            direction = "↑" if price.get('price_change_direction') == 'up' else "↓" if price.get('price_change_direction') == 'down' else "→"
+            direction = get_price_change_direction(price_change)
             price_change_percent = price.get('price_change_percent', 0)
             print(f"変化: {price_change:+.2f} ({price_change_percent:+.2f}%) {direction}")
     
@@ -353,7 +375,7 @@ def display_search_results_api(results: Dict[str, Any]) -> None:
             # 価格変化の安全な表示
             price_change = result.get('price_change')
             if price_change is not None and isinstance(price_change, (int, float)):
-                direction = "↑" if result.get('price_change_direction') == 'up' else "↓" if result.get('price_change_direction') == 'down' else "→"
+                direction = get_price_change_direction(price_change)
                 price_change_percent = result.get('price_change_percent', 0)
                 price_info += f" ({price_change:+.2f}, {price_change_percent:+.2f}% {direction})"
             print(price_info)
@@ -504,6 +526,8 @@ def lambda_handler(event, context):
                 'body': chart_base64,
                 'isBase64Encoded': True
             }
+        elif '/home' in resource:
+            result = get_stock_home_api()
         else:
             return {
                 'statusCode': 404,
@@ -611,7 +635,7 @@ def search_stocks_api(query, query_parameters):
                             result['previous_close'] = round(previous_close, 2)
                             result['price_change'] = round(price_change, 2)
                             result['price_change_percent'] = round(price_change_percent, 2)
-                            result['price_change_direction'] = 'up' if price_change > 0 else 'down' if price_change < 0 else 'unchanged'
+                            result['price_change_direction'] = get_price_change_direction(price_change)
                         
                         # 追加情報
                         result['market_cap'] = info.get('marketCap')
@@ -845,7 +869,7 @@ def get_stock_price_api(ticker):
                     price['previous_close'] = round(previous_close, 2)
                     price['price_change'] = round(diff, 2)
                     price['price_change_percent'] = round(diff / previous_close * 100, 2)
-                    price['price_change_direction'] = 'up' if diff > 0 else 'down' if diff < 0 else 'unchanged'
+                    price['price_change_direction'] = get_price_change_direction(diff)
         except Exception as e:
             price = {'error': f'価格情報取得エラー: {str(e)}'}
 
@@ -1227,6 +1251,208 @@ def get_stock_sustainability_api(ticker):
     except Exception as e:
         return {'error': f'ESG情報取得エラー: {str(e)}'}
 
+def get_stock_home_api():
+    """ホーム画面用情報取得API - 株価指数、主要ETF、セクター情報"""
+    try:
+        # 主要な株価指数
+        indices = {}
+        try:
+            index_symbols = {
+                'SPY': 'S&P 500 ETF',
+                'QQQ': 'NASDAQ-100 ETF', 
+                'IWM': 'Russell 2000 ETF',
+                'DIA': 'Dow Jones ETF',
+                'VTI': 'Total Stock Market ETF',
+                'VEA': 'Developed Markets ETF',
+                'VWO': 'Emerging Markets ETF',
+                'BND': 'Total Bond Market ETF',
+                'GLD': 'Gold ETF',
+                'USO': 'Crude Oil ETF'
+            }
+            
+            for symbol, name in index_symbols.items():
+                try:
+                    stock = yf.Ticker(symbol)
+                    info = stock.get_info()
+                    fast_info = stock.get_fast_info()
+                    
+                    # 価格情報
+                    current_price = None
+                    previous_close = None
+                    price_change = None
+                    price_change_percent = None
+                    
+                    if hasattr(fast_info, 'last_price') and fast_info.last_price:
+                        current_price = float(fast_info.last_price)
+                    elif info and 'currentPrice' in info:
+                        current_price = float(info['currentPrice'])
+                    
+                    if hasattr(fast_info, 'previous_close') and fast_info.previous_close:
+                        previous_close = float(fast_info.previous_close)
+                    elif info and 'previousClose' in info:
+                        previous_close = float(info['previousClose'])
+                    
+                    if current_price and previous_close:
+                        price_change = current_price - previous_close
+                        price_change_percent = (price_change / previous_close) * 100
+                    
+                    indices[symbol] = {
+                        'name': name,
+                        'current_price': round(current_price, 2) if current_price else None,
+                        'previous_close': round(previous_close, 2) if previous_close else None,
+                        'price_change': round(price_change, 2) if price_change is not None else None,
+                        'price_change_percent': round(price_change_percent, 2) if price_change_percent is not None else None,
+                        'price_change_direction': get_price_change_direction(price_change),
+                        'currency': 'USD'
+                    }
+                except Exception as e:
+                    indices[symbol] = {
+                        'name': name,
+                        'error': f'データ取得エラー: {str(e)}'
+                    }
+        except Exception as e:
+            indices = {'error': f'指数情報取得エラー: {str(e)}'}
+
+        # セクター別ETF
+        sectors = {}
+        try:
+            sector_etfs = {
+                'XLK': {'name': 'Technology Select Sector ETF', 'sector': 'Technology'},
+                'XLF': {'name': 'Financial Select Sector ETF', 'sector': 'Financial'},
+                'XLE': {'name': 'Energy Select Sector ETF', 'sector': 'Energy'},
+                'XLV': {'name': 'Health Care Select Sector ETF', 'sector': 'Healthcare'},
+                'XLI': {'name': 'Industrial Select Sector ETF', 'sector': 'Industrial'},
+                'XLP': {'name': 'Consumer Staples Select Sector ETF', 'sector': 'Consumer Staples'},
+                'XLY': {'name': 'Consumer Discretionary Select Sector ETF', 'sector': 'Consumer Discretionary'},
+                'XLU': {'name': 'Utilities Select Sector ETF', 'sector': 'Utilities'},
+                'XLRE': {'name': 'Real Estate Select Sector ETF', 'sector': 'Real Estate'},
+                'XLB': {'name': 'Materials Select Sector ETF', 'sector': 'Materials'},
+                'XLC': {'name': 'Communication Services Select Sector ETF', 'sector': 'Communication Services'}
+            }
+            
+            for symbol, info in sector_etfs.items():
+                try:
+                    stock = yf.Ticker(symbol)
+                    stock_info = stock.get_info()
+                    fast_info = stock.get_fast_info()
+                    
+                    # 価格情報
+                    current_price = None
+                    previous_close = None
+                    price_change = None
+                    price_change_percent = None
+                    
+                    if hasattr(fast_info, 'last_price') and fast_info.last_price:
+                        current_price = float(fast_info.last_price)
+                    elif stock_info and 'currentPrice' in stock_info:
+                        current_price = float(stock_info['currentPrice'])
+                    
+                    if hasattr(fast_info, 'previous_close') and fast_info.previous_close:
+                        previous_close = float(fast_info.previous_close)
+                    elif stock_info and 'previousClose' in stock_info:
+                        previous_close = float(stock_info['previousClose'])
+                    
+                    if current_price and previous_close:
+                        price_change = current_price - previous_close
+                        price_change_percent = (price_change / previous_close) * 100
+                    
+                    sectors[symbol] = {
+                        'name': info['name'],
+                        'sector': info['sector'],
+                        'current_price': round(current_price, 2) if current_price else None,
+                        'previous_close': round(previous_close, 2) if previous_close else None,
+                        'price_change': round(price_change, 2) if price_change is not None else None,
+                        'price_change_percent': round(price_change_percent, 2) if price_change_percent is not None else None,
+                        'price_change_direction': get_price_change_direction(price_change),
+                        'currency': 'USD'
+                    }
+                except Exception as e:
+                    sectors[symbol] = {
+                        'name': info['name'],
+                        'sector': info['sector'],
+                        'error': f'データ取得エラー: {str(e)}'
+                    }
+        except Exception as e:
+            sectors = {'error': f'セクター情報取得エラー: {str(e)}'}
+
+        # 市場概要（主要指数の集計）
+        market_summary = {}
+        try:
+            if indices and not indices.get('error'):
+                # 上昇・下降・変化なしのカウント
+                up_count = sum(1 for data in indices.values() if isinstance(data, dict) and data.get('price_change_direction') == 'up')
+                down_count = sum(1 for data in indices.values() if isinstance(data, dict) and data.get('price_change_direction') == 'down')
+                unchanged_count = sum(1 for data in indices.values() if isinstance(data, dict) and data.get('price_change_direction') == 'unchanged')
+                
+                # 平均変化率
+                changes = [data.get('price_change_percent', 0) for data in indices.values() 
+                          if isinstance(data, dict) and data.get('price_change_percent') is not None]
+                avg_change = sum(changes) / len(changes) if changes else 0
+                
+                market_summary = {
+                    'total_indices': len(indices),
+                    'up_count': up_count,
+                    'down_count': down_count,
+                    'unchanged_count': unchanged_count,
+                    'average_change_percent': round(avg_change, 2),
+                    'market_sentiment': get_market_sentiment(avg_change)
+                }
+        except Exception as e:
+            market_summary = {'error': f'市場概要計算エラー: {str(e)}'}
+
+        # セクター概要
+        sector_summary = {}
+        try:
+            if sectors and not sectors.get('error'):
+                sector_performance = {}
+                for symbol, data in sectors.items():
+                    if isinstance(data, dict) and 'sector' in data and 'price_change_percent' in data:
+                        sector = data['sector']
+                        change = data.get('price_change_percent', 0)
+                        if sector not in sector_performance:
+                            sector_performance[sector] = []
+                        sector_performance[sector].append(change)
+                
+                # セクター別平均変化率
+                sector_avg = {}
+                for sector, changes in sector_performance.items():
+                    if changes:
+                        avg_change = sum(changes) / len(changes)
+                        sector_avg[sector] = round(avg_change, 2)
+                
+                # ベスト・ワーストセクター
+                if sector_avg:
+                    best_sector = max(sector_avg.items(), key=lambda x: x[1])
+                    worst_sector = min(sector_avg.items(), key=lambda x: x[1])
+                    
+                    sector_summary = {
+                        'sector_averages': sector_avg,
+                        'best_performing_sector': {
+                            'sector': best_sector[0],
+                            'change_percent': best_sector[1]
+                        },
+                        'worst_performing_sector': {
+                            'sector': worst_sector[0],
+                            'change_percent': worst_sector[1]
+                        }
+                    }
+        except Exception as e:
+            sector_summary = {'error': f'セクター概要計算エラー: {str(e)}'}
+
+        result = {
+            'indices': indices,
+            'sectors': sectors,
+            'market_summary': market_summary,
+            'sector_summary': sector_summary,
+            'execution_info': get_execution_info('LAMBDA'),
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        return result
+        
+    except Exception as e:
+        return {'error': f'ホーム情報取得エラー: {str(e)}'}
+
 
 def get_api_gateway_url(event=None, context=None):
     """API GatewayのURLを動的に取得する"""
@@ -1578,6 +1804,115 @@ def generate_swagger_ui_html(event=None, context=None):
                             }
                         }
                     }
+                }
+            },
+            "/basic": {
+                "get": {
+                    "summary": "基本情報取得",
+                    "description": "指定されたティッカーシンボルの基本情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル（例: AAPL, MSFT, 7203.T）", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "info": {"type": "object"}, "fast_info": {"type": "object"}, "logo_url": {"type": "string"}, "isin": {"type": "string"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/price": {
+                "get": {
+                    "summary": "株価情報取得",
+                    "description": "指定されたティッカーシンボルの現在の株価情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "price": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/history": {
+                "get": {
+                    "summary": "株価履歴取得",
+                    "description": "指定されたティッカーシンボルの株価履歴を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}},
+                        {"name": "period", "in": "query", "required": False, "description": "履歴期間（デフォルト: 1mo）", "schema": {"type": "string", "enum": ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"], "default": "1mo"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "period": {"type": "string"}, "history": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/financials": {
+                "get": {
+                    "summary": "財務情報取得",
+                    "description": "指定されたティッカーシンボルの財務諸表・決算情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "financials": {"type": "object"}, "earnings": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/analysts": {
+                "get": {
+                    "summary": "アナリスト情報取得",
+                    "description": "指定されたティッカーシンボルのアナリスト予想・分析情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "analysts": {"type": "object"}, "recommendations": {"type": "array"}, "analysis": {"type": "object"}, "upgrades_downgrades": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/holders": {
+                "get": {
+                    "summary": "株主情報取得",
+                    "description": "指定されたティッカーシンボルの株主情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "holders": {"type": "object"}, "shares": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/events": {
+                "get": {
+                    "summary": "イベント情報取得",
+                    "description": "指定されたティッカーシンボルのイベント情報（決算日、配当、分割など）を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "calendar": {"type": "array"}, "earnings_dates": {"type": "array"}, "dividends": {"type": "array"}, "splits": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/news": {
+                "get": {
+                    "summary": "ニュース情報取得",
+                    "description": "指定されたティッカーシンボルの関連ニュースを取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "news": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/options": {
+                "get": {
+                    "summary": "オプション情報取得",
+                    "description": "指定されたティッカーシンボルのオプション情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "options": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/sustainability": {
+                "get": {
+                    "summary": "ESG情報取得",
+                    "description": "指定されたティッカーシンボルのESG（環境・社会・ガバナンス）情報を取得します",
+                    "parameters": [
+                        {"name": "ticker", "in": "query", "required": True, "description": "ティッカーシンボル", "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "sustainability": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/home": {
+                "get": {
+                    "summary": "ホーム画面情報取得",
+                    "description": "株価指数、主要ETF、セクター情報などのホーム画面用情報を取得します",
+                    "parameters": [],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"indices": {"type": "object"}, "etfs": {"type": "object"}, "sectors": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
             }
         }

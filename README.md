@@ -106,6 +106,7 @@ python yfinance_cli.py events AAPL            # イベント情報のみ
 python yfinance_cli.py news AAPL              # ニュース情報のみ
 python yfinance_cli.py options AAPL           # オプション情報のみ
 python yfinance_cli.py sustainability AAPL    # ESG情報のみ
+python yfinance_cli.py home                    # ホーム画面情報
 ```
 
 ### 2. Docker実行
@@ -132,6 +133,7 @@ docker-compose run --rm yfinance-local python yfinance_cli.py events AAPL
 docker-compose run --rm yfinance-local python yfinance_cli.py news AAPL
 docker-compose run --rm yfinance-local python yfinance_cli.py options AAPL
 docker-compose run --rm yfinance-local python yfinance_cli.py sustainability AAPL
+docker-compose run --rm yfinance-local python yfinance_cli.py home
 
 # 検索機能実行
 docker-compose run --rm yfinance-local python yfinance_search.py Apple
@@ -175,6 +177,7 @@ curl "https://your-api-gateway-url/prod/events?ticker=AAPL"
 curl "https://your-api-gateway-url/prod/news?ticker=AAPL"
 curl "https://your-api-gateway-url/prod/options?ticker=AAPL"
 curl "https://your-api-gateway-url/prod/sustainability?ticker=AAPL"
+curl "https://your-api-gateway-url/prod/home"
 ```
 
 ### 4. ローカルHTTPサーバー
@@ -332,6 +335,13 @@ YFinanceDocker/
 - **パラメータ**: `ticker`（必須）
 - **例**: `GET /sustainability?ticker=AAPL`
 
+#### 3.11 ホーム画面情報 API
+- **エンドポイント**: `/home`
+- **メソッド**: GET
+- **パラメータ**: なし
+- **例**: `GET /home`
+- **説明**: 株価指数、主要ETF、セクター情報を取得
+
 ### 4. チャート画像 API
 - **エンドポイント**: `/chart`
 - **メソッド**: GET
@@ -446,6 +456,83 @@ YFinanceDocker/
     "財務情報: 財務情報取得エラー: データが利用できません",
     "オプション情報: オプション情報取得エラー: オプションが利用できません"
   ],
+  "execution_info": {
+    "mode": "LOCAL",
+    "timestamp": "2024-01-15T10:30:00",
+    "server": "lambda"
+  }
+}
+```
+
+### ホーム画面情報
+```json
+{
+  "indices": {
+    "SPY": {
+      "name": "S&P 500 ETF",
+      "current_price": 450.25,
+      "previous_close": 448.10,
+      "price_change": 2.15,
+      "price_change_percent": 0.48,
+      "price_change_direction": "up",
+      "currency": "USD"
+    },
+    "QQQ": {
+      "name": "NASDAQ-100 ETF",
+      "current_price": 380.50,
+      "previous_close": 378.20,
+      "price_change": 2.30,
+      "price_change_percent": 0.61,
+      "price_change_direction": "up",
+      "currency": "USD"
+    }
+  },
+  "sectors": {
+    "XLK": {
+      "name": "Technology Select Sector ETF",
+      "sector": "Technology",
+      "current_price": 180.75,
+      "previous_close": 179.50,
+      "price_change": 1.25,
+      "price_change_percent": 0.70,
+      "price_change_direction": "up",
+      "currency": "USD"
+    },
+    "XLF": {
+      "name": "Financial Select Sector ETF",
+      "sector": "Financial",
+      "current_price": 35.20,
+      "previous_close": 35.80,
+      "price_change": -0.60,
+      "price_change_percent": -1.68,
+      "price_change_direction": "down",
+      "currency": "USD"
+    }
+  },
+  "market_summary": {
+    "total_indices": 10,
+    "up_count": 7,
+    "down_count": 2,
+    "unchanged_count": 1,
+    "average_change_percent": 0.35,
+    "market_sentiment": "bullish"
+  },
+  "sector_summary": {
+    "sector_averages": {
+      "Technology": 0.70,
+      "Financial": -1.68,
+      "Energy": 0.25,
+      "Healthcare": 0.45
+    },
+    "best_performing_sector": {
+      "sector": "Technology",
+      "change_percent": 0.70
+    },
+    "worst_performing_sector": {
+      "sector": "Financial",
+      "change_percent": -1.68
+    }
+  },
   "execution_info": {
     "mode": "LOCAL",
     "timestamp": "2024-01-15T10:30:00",

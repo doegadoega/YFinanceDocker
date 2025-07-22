@@ -112,6 +112,12 @@ Resources:
             RestApiId: !Ref YFinanceApi
             Path: /sustainability
             Method: get
+        GetHome:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /home
+            Method: get
         GetChart:
           Type: Api
           Properties:

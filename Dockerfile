@@ -1,4 +1,4 @@
-FROM public.ecr.aws/lambda/python:3.9
+FROM public.ecr.aws/lambda/python:3.12
 
 # 依存関係をコピー
 COPY requirements.txt ${LAMBDA_TASK_ROOT}
