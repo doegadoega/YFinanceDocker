@@ -7,6 +7,28 @@ import pandas as pd
 import numpy as np
 from typing import Union, Dict, Any, Optional
 
+# ... 既存のimport文の下に追加 ...
+BULLISH_THRESHOLD = 0.5
+BEARISH_THRESHOLD = -0.5
+
+def get_price_change_direction(price_change):
+    if price_change is None:
+        return "unchanged"
+    if price_change > 0:
+        return "up"
+    elif price_change < 0:
+        return "down"
+    else:
+        return "unchanged"
+
+def get_market_sentiment(avg_change):
+    if avg_change > BULLISH_THRESHOLD:
+        return "bullish"
+    elif avg_change < BEARISH_THRESHOLD:
+        return "bearish"
+    else:
+        return "neutral"
+
 def serialize_for_json(obj):
     """オブジェクトをJSON serializable に変換"""
     if pd.isna(obj) or obj is None:
@@ -181,7 +203,7 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
         # 価格変化の安全な表示
         price_change = price.get('price_change')
         if price_change is not None and isinstance(price_change, (int, float)):
-            direction = "↑" if price.get('price_change_direction') == 'up' else "↓" if price.get('price_change_direction') == 'down' else "→"
+            direction = get_price_change_direction(price_change)
             price_change_percent = price.get('price_change_percent', 0)
             print(f"変化: {price_change:+.2f} ({price_change_percent:+.2f}%) {direction}")
     
@@ -353,7 +375,7 @@ def display_search_results_api(results: Dict[str, Any]) -> None:
             # 価格変化の安全な表示
             price_change = result.get('price_change')
             if price_change is not None and isinstance(price_change, (int, float)):
-                direction = "↑" if result.get('price_change_direction') == 'up' else "↓" if result.get('price_change_direction') == 'down' else "→"
+                direction = get_price_change_direction(price_change)
                 price_change_percent = result.get('price_change_percent', 0)
                 price_info += f" ({price_change:+.2f}, {price_change_percent:+.2f}% {direction})"
             print(price_info)
@@ -613,7 +635,7 @@ def search_stocks_api(query, query_parameters):
                             result['previous_close'] = round(previous_close, 2)
                             result['price_change'] = round(price_change, 2)
                             result['price_change_percent'] = round(price_change_percent, 2)
-                            result['price_change_direction'] = 'up' if price_change > 0 else 'down' if price_change < 0 else 'unchanged'
+                            result['price_change_direction'] = get_price_change_direction(price_change)
                         
                         # 追加情報
                         result['market_cap'] = info.get('marketCap')
@@ -847,7 +869,7 @@ def get_stock_price_api(ticker):
                     price['previous_close'] = round(previous_close, 2)
                     price['price_change'] = round(diff, 2)
                     price['price_change_percent'] = round(diff / previous_close * 100, 2)
-                    price['price_change_direction'] = 'up' if diff > 0 else 'down' if diff < 0 else 'unchanged'
+                    price['price_change_direction'] = get_price_change_direction(diff)
         except Exception as e:
             price = {'error': f'価格情報取得エラー: {str(e)}'}
 
@@ -1280,7 +1302,7 @@ def get_stock_home_api():
                         'previous_close': round(previous_close, 2) if previous_close else None,
                         'price_change': round(price_change, 2) if price_change is not None else None,
                         'price_change_percent': round(price_change_percent, 2) if price_change_percent is not None else None,
-                        'price_change_direction': 'up' if price_change and price_change > 0 else 'down' if price_change and price_change < 0 else 'unchanged',
+                        'price_change_direction': get_price_change_direction(price_change),
                         'currency': 'USD'
                     }
                 except Exception as e:
@@ -1341,7 +1363,7 @@ def get_stock_home_api():
                         'previous_close': round(previous_close, 2) if previous_close else None,
                         'price_change': round(price_change, 2) if price_change is not None else None,
                         'price_change_percent': round(price_change_percent, 2) if price_change_percent is not None else None,
-                        'price_change_direction': 'up' if price_change and price_change > 0 else 'down' if price_change and price_change < 0 else 'unchanged',
+                        'price_change_direction': get_price_change_direction(price_change),
                         'currency': 'USD'
                     }
                 except Exception as e:
@@ -1373,7 +1395,7 @@ def get_stock_home_api():
                     'down_count': down_count,
                     'unchanged_count': unchanged_count,
                     'average_change_percent': round(avg_change, 2),
-                    'market_sentiment': 'bullish' if avg_change > 0.5 else 'bearish' if avg_change < -0.5 else 'neutral'
+                    'market_sentiment': get_market_sentiment(avg_change)
                 }
         except Exception as e:
             market_summary = {'error': f'市場概要計算エラー: {str(e)}'}
