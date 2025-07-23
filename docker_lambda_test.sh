@@ -17,22 +17,27 @@ echo ""
 echo "✅ Lambda用イメージビルド完了"
 echo ""
 
-# 2. Lambda関数の動作確認
-echo "⚡ 2. Lambda関数の動作確認"
+# 2. Lambdaハンドラーのローカルテスト（python -cでevent/contextを渡す）
+echo "⚡ 2. Lambdaハンドラーのローカルテスト"
 echo "----------------------"
-echo "Lambda関数のハンドラー確認:"
-docker-compose run --rm yfinance-lambda python -c "
-import lambda_function
-print('Lambda関数インポート成功')
-print(f'ハンドラー関数: {lambda_function.lambda_handler}')
-"
+echo "Lambdaハンドラーをevent/context付きで直接呼び出し:"
+docker-compose run --rm yfinance-lambda python -c "from lambda_function import lambda_handler; event={'resource':'/ticker/basic','httpMethod':'GET','queryStringParameters':{'ticker':'AAPL'}}; print(lambda_handler(event, None))"
 
 echo ""
-echo "✅ Lambda関数確認完了"
+echo "✅ Lambdaハンドラー直接テスト完了"
 echo ""
 
-# 3. 環境変数の確認
-echo "🔍 3. 環境変数の確認"
+# 3. Lambda関数のインポート確認（python -c）
+echo "🔍 3. Lambda関数のインポート確認"
+echo "-----------------"
+docker-compose run --rm yfinance-lambda python -c "import lambda_function; print('Lambda関数インポート成功')"
+
+echo ""
+echo "✅ Lambda関数インポート確認完了"
+echo ""
+
+# 4. 環境変数の確認
+echo "🔍 4. 環境変数の確認"
 echo "-----------------"
 docker-compose run --rm yfinance-lambda python -c "
 import os
@@ -46,8 +51,8 @@ echo ""
 echo "✅ 環境変数確認完了"
 echo ""
 
-# 4. 依存関係の確認
-echo "📦 4. 依存関係の確認"
+# 5. 依存関係の確認
+echo "📦 5. 依存関係の確認"
 echo "-----------------"
 docker-compose run --rm yfinance-lambda python -c "
 import yfinance
@@ -63,8 +68,8 @@ echo ""
 echo "✅ 依存関係確認完了"
 echo ""
 
-# 5. 関数の直接テスト
-echo "🧪 5. 関数の直接テスト"
+# 6. 関数の直接テスト
+echo "🧪 6. 関数の直接テスト"
 echo "-------------------"
 docker-compose run --rm yfinance-lambda python -c "
 from lambda_function import get_stock_info_api, search_stocks_api
@@ -88,19 +93,20 @@ if search_result.get('error'):
 echo ""
 echo "✅ 関数テスト完了"
 echo ""
-
 echo "🎉 すべてのLambda Dockerテストが完了しました！"
 echo "============================================="
 echo ""
 echo "📋 テスト結果サマリー:"
 echo "• Lambda用イメージビルド: ✅"
-echo "• Lambda関数確認: ✅"
+echo "• Lambdaハンドラー直接テスト: ✅"
+echo "• Lambda関数インポート: ✅"
 echo "• 環境変数確認: ✅"
 echo "• 依存関係確認: ✅"
 echo "• 関数直接テスト: ✅"
 echo ""
 echo "💡 個別テストを実行する場合:"
 echo "• Lambdaビルド: docker-compose build yfinance-lambda"
+echo "• Lambdaハンドラー直接: docker-compose run --rm yfinance-lambda python -c \"from lambda_function import lambda_handler; event={'resource':'/ticker/basic','httpMethod':'GET','queryStringParameters':{'ticker':'AAPL'}}; print(lambda_handler(event, None))\""
 echo "• Lambda関数確認: docker-compose run --rm yfinance-lambda python -c \"import lambda_function\""
 echo "• 環境確認: docker-compose run --rm yfinance-lambda env"
 echo ""

@@ -271,6 +271,55 @@ YFinanceDocker/
 - **例**: `GET /tickerDetail?ticker=AAPL&period=1y`
 - **説明**: 全ての要素を統合して返す（各要素専用関数を内部で呼び出し）
 
+### 🆕 金融ニュースRSS API（/news/rss）
+
+- **エンドポイント**: `/news/rss`
+- **メソッド**: GET
+- **パラメータ**:
+  - `limit`: 取得件数（デフォルト: 50, 最大: 200）
+  - `category`: ニュースカテゴリでフィルタ（例: general, market）
+  - `source`: ソース名でフィルタ（例: Yahoo, MarketWatch）
+  - `sort`: ソート順（published_desc, published_asc, title_asc）
+- **例**: `GET /news/rss?limit=10`
+- **取得元**:
+  - [Yahoo Finance](https://finance.yahoo.com/rss/2.0)
+  - [MarketWatch Top Stories](https://www.marketwatch.com/rss/topstories)
+- **説明**: 上記2つの金融ニュースRSSフィードから最新ニュースを一括取得し、重複排除・カテゴリ/ソース/件数/ソート指定が可能です。
+
+#### 出力例
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "a1b2c3d4e5f6",
+      "title": "Philip Morris 2Q EPS Tops Views, Company Boosts 2025 EPS Projection",
+      "summary": "Philip Morris International reported second-quarter earnings that topped analysts’ expectations and raised its full-year EPS guidance...",
+      "url": "https://www.wsj.com/business/earnings/philip-morris-2q-eps-tops-views-company-boosts-2025-eps-projection-fb09063d?siteid=yhoof2&yptr=yahoo",
+      "source": "Yahoo Finance",
+      "category": "general",
+      "published_at": "2025-07-22T12:04:00Z",
+      "author": "The Wall Street Journal",
+      "image_url": null,
+      "tags": []
+    }
+  ],
+  "metadata": {
+    "total_sources": 2,
+    "total_articles": 1,
+    "sources_used": [
+      "Yahoo Finance",
+      "MarketWatch Top Stories"
+    ],
+    "category_filter": "all",
+    "source_filter": "",
+    "sort": "published_desc",
+    "last_updated": "2025-07-22T12:10:00Z"
+  },
+  "timestamp": "2025-07-22T12:10:00Z"
+}
+```
+
 ### 3. 個別要素 API（新機能）
 
 #### 3.1 基本情報 API
@@ -322,6 +371,17 @@ YFinanceDocker/
 - **メソッド**: GET
 - **パラメータ**: `ticker`（必須）
 - **例**: `GET /news?ticker=AAPL`
+
+### 3.12 金融ニュースRSS API
+- **エンドポイント**: `/news/rss`
+- **メソッド**: GET
+- **パラメータ**:
+  - `limit`（デフォルト: 50, 最大: 200）
+  - `category`（任意）
+  - `source`（任意）
+  - `sort`（任意）
+- **例**: `GET /news/rss?limit=10`
+- **説明**: Yahoo Finance・MarketWatchの公式RSSから最新金融ニュースを一括取得
 
 #### 3.9 オプション情報 API
 - **エンドポイント**: `/options`

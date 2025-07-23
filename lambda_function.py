@@ -6,10 +6,27 @@ import os
 import pandas as pd
 import numpy as np
 from typing import Union, Dict, Any, Optional
+import feedparser
+import hashlib
+import re
 
 # ... 既存のimport文の下に追加 ...
 BULLISH_THRESHOLD = 0.5
 BEARISH_THRESHOLD = -0.5
+
+# RSSフィードソース設定
+RSS_SOURCES = [
+    {
+        'name': 'Yahoo Finance',
+        'url': 'https://finance.yahoo.com/rss/2.0',
+        'category': 'general'
+    },
+    {
+        'name': 'MarketWatch Top Stories',
+        'url': 'https://www.marketwatch.com/rss/topstories',
+        'category': 'market'
+    }
+]
 
 def get_price_change_direction(price_change):
     if price_change is None:
@@ -447,53 +464,53 @@ def lambda_handler(event, context):
             # periodパラメータも受け取る（history用）
             period = query_parameters.get('period', '1mo')
             result = get_stock_info_api(ticker, period)
-        elif '/basic' in resource:
+        elif '/ticker/basic' in resource:
             ticker, error_response = validate_ticker_parameter(query_parameters, headers)
             if error_response:
                 return error_response
             result = get_stock_basic_info_api(ticker)
-        elif '/price' in resource:
+        elif '/ticker/price' in resource:
             ticker, error_response = validate_ticker_parameter(query_parameters, headers)
             if error_response:
                 return error_response
             result = get_stock_price_api(ticker)
-        elif '/history' in resource:
+        elif '/ticker/history' in resource:
             ticker, error_response = validate_ticker_parameter(query_parameters, headers)
             if error_response:
                 return error_response
             period = query_parameters.get('period', '1mo')
             result = get_stock_history_api(ticker, period)
-        elif '/financials' in resource:
+        elif '/ticker/financials' in resource:
             ticker, error_response = validate_ticker_parameter(query_parameters, headers)
             if error_response:
                 return error_response
             result = get_stock_financials_api(ticker)
-        elif '/analysts' in resource:
+        elif '/ticker/analysts' in resource:
             ticker, error_response = validate_ticker_parameter(query_parameters, headers)
             if error_response:
                 return error_response
             result = get_stock_analysts_api(ticker)
-        elif '/holders' in resource:
+        elif '/ticker/holders' in resource:
             ticker, error_response = validate_ticker_parameter(query_parameters, headers)
             if error_response:
                 return error_response
             result = get_stock_holders_api(ticker)
-        elif '/events' in resource:
+        elif '/ticker/events' in resource:
             ticker, error_response = validate_ticker_parameter(query_parameters, headers)
             if error_response:
                 return error_response
             result = get_stock_events_api(ticker)
-        elif '/news' in resource:
+        elif '/ticker/news' in resource:
             ticker, error_response = validate_ticker_parameter(query_parameters, headers)
             if error_response:
                 return error_response
             result = get_stock_news_api(ticker)
-        elif '/options' in resource:
+        elif '/ticker/options' in resource:
             ticker, error_response = validate_ticker_parameter(query_parameters, headers)
             if error_response:
                 return error_response
             result = get_stock_options_api(ticker)
-        elif '/sustainability' in resource:
+        elif '/ticker/sustainability' in resource:
             ticker, error_response = validate_ticker_parameter(query_parameters, headers)
             if error_response:
                 return error_response
@@ -528,6 +545,8 @@ def lambda_handler(event, context):
             }
         elif '/home' in resource:
             result = get_stock_home_api()
+        elif '/news/rss' in resource:
+            result = lamuda_get_rss_news_api(query_parameters)
         else:
             return {
                 'statusCode': 404,
@@ -1806,7 +1825,7 @@ def generate_swagger_ui_html(event=None, context=None):
                     }
                 }
             },
-            "/basic": {
+            "/ticker/basic": {
                 "get": {
                     "summary": "基本情報取得",
                     "description": "指定されたティッカーシンボルの基本情報を取得します",
@@ -1816,7 +1835,7 @@ def generate_swagger_ui_html(event=None, context=None):
                     "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "info": {"type": "object"}, "fast_info": {"type": "object"}, "logo_url": {"type": "string"}, "isin": {"type": "string"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
             },
-            "/price": {
+            "/ticker/price": {
                 "get": {
                     "summary": "株価情報取得",
                     "description": "指定されたティッカーシンボルの現在の株価情報を取得します",
@@ -1826,7 +1845,7 @@ def generate_swagger_ui_html(event=None, context=None):
                     "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "price": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
             },
-            "/history": {
+            "/ticker/history": {
                 "get": {
                     "summary": "株価履歴取得",
                     "description": "指定されたティッカーシンボルの株価履歴を取得します",
@@ -1837,7 +1856,7 @@ def generate_swagger_ui_html(event=None, context=None):
                     "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "period": {"type": "string"}, "history": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
             },
-            "/financials": {
+            "/ticker/financials": {
                 "get": {
                     "summary": "財務情報取得",
                     "description": "指定されたティッカーシンボルの財務諸表・決算情報を取得します",
@@ -1847,7 +1866,7 @@ def generate_swagger_ui_html(event=None, context=None):
                     "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "financials": {"type": "object"}, "earnings": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
             },
-            "/analysts": {
+            "/ticker/analysts": {
                 "get": {
                     "summary": "アナリスト情報取得",
                     "description": "指定されたティッカーシンボルのアナリスト予想・分析情報を取得します",
@@ -1857,7 +1876,7 @@ def generate_swagger_ui_html(event=None, context=None):
                     "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "analysts": {"type": "object"}, "recommendations": {"type": "array"}, "analysis": {"type": "object"}, "upgrades_downgrades": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
             },
-            "/holders": {
+            "/ticker/holders": {
                 "get": {
                     "summary": "株主情報取得",
                     "description": "指定されたティッカーシンボルの株主情報を取得します",
@@ -1867,7 +1886,7 @@ def generate_swagger_ui_html(event=None, context=None):
                     "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "holders": {"type": "object"}, "shares": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
             },
-            "/events": {
+            "/ticker/events": {
                 "get": {
                     "summary": "イベント情報取得",
                     "description": "指定されたティッカーシンボルのイベント情報（決算日、配当、分割など）を取得します",
@@ -1877,7 +1896,7 @@ def generate_swagger_ui_html(event=None, context=None):
                     "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "calendar": {"type": "array"}, "earnings_dates": {"type": "array"}, "dividends": {"type": "array"}, "splits": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
             },
-            "/news": {
+            "/ticker/news": {
                 "get": {
                     "summary": "ニュース情報取得",
                     "description": "指定されたティッカーシンボルの関連ニュースを取得します",
@@ -1887,7 +1906,7 @@ def generate_swagger_ui_html(event=None, context=None):
                     "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "news": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
             },
-            "/options": {
+            "/ticker/options": {
                 "get": {
                     "summary": "オプション情報取得",
                     "description": "指定されたティッカーシンボルのオプション情報を取得します",
@@ -1897,7 +1916,7 @@ def generate_swagger_ui_html(event=None, context=None):
                     "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"ticker": {"type": "string"}, "options": {"type": "array"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
             },
-            "/sustainability": {
+            "/ticker/sustainability": {
                 "get": {
                     "summary": "ESG情報取得",
                     "description": "指定されたティッカーシンボルのESG（環境・社会・ガバナンス）情報を取得します",
@@ -1913,6 +1932,16 @@ def generate_swagger_ui_html(event=None, context=None):
                     "description": "株価指数、主要ETF、セクター情報などのホーム画面用情報を取得します",
                     "parameters": [],
                     "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"indices": {"type": "object"}, "etfs": {"type": "object"}, "sectors": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                }
+            },
+            "/news/rss": {
+                "get": {
+                    "summary": "Yahoo Finance RSSニュース取得",
+                    "description": "Yahoo FinanceのRSSフィードから最新ニュースを取得します",
+                    "parameters": [
+                        {"name": "limit", "in": "query", "required": False, "description": "取得件数（デフォルト10）", "schema": {"type": "integer", "default": 10}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"status": {"type": "string"}, "data": {"type": "array"}, "count": {"type": "integer"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
             }
         }
@@ -2022,3 +2051,137 @@ def get_stock_chart_api(ticker, period='1mo', size='800x400', chart_type='line')
         return img_base64, None
     except Exception as e:
         return None, str(e)
+
+def clean_html(text):
+    if not text:
+        return ""
+    clean = re.compile('<.*?>')
+    text = re.sub(clean, '', text)
+    text = ' '.join(text.split())
+    return text
+
+def generate_news_id(title, url):
+    content = f"{title}_{url}".encode('utf-8')
+    return hashlib.md5(content).hexdigest()[:12]
+
+def parse_published_date(entry):
+    published_date = None
+    if hasattr(entry, 'published_parsed') and entry.published_parsed:
+        try:
+            published_date = datetime(*entry.published_parsed[:6])
+        except:
+            pass
+    if not published_date and hasattr(entry, 'published'):
+        try:
+            published_date = entry.published
+        except:
+            pass
+    if not published_date and hasattr(entry, 'updated_parsed') and entry.updated_parsed:
+        try:
+            published_date = datetime(*entry.updated_parsed[:6])
+        except:
+            pass
+    return published_date
+
+def fetch_rss_feed(source):
+    try:
+        feed = feedparser.parse(source['url'])
+        articles = []
+        for entry in feed.entries:
+            title = clean_html(entry.get('title', ''))
+            if not title:
+                continue
+            url = entry.get('link', '')
+            summary = clean_html(entry.get('summary', entry.get('description', '')))
+            published_date = parse_published_date(entry)
+            author = entry.get('author', '')
+            image_url = None
+            if hasattr(entry, 'media_content'):
+                for media in entry.media_content:
+                    if media.get('type', '').startswith('image'):
+                        image_url = media.get('url')
+                        break
+            if not image_url and hasattr(entry, 'enclosures'):
+                for enclosure in entry.enclosures:
+                    if enclosure.type.startswith('image'):
+                        image_url = enclosure.href
+                        break
+            tags = []
+            if hasattr(entry, 'tags'):
+                tags = [tag.term for tag in entry.tags if hasattr(tag, 'term')]
+            article = {
+                'id': generate_news_id(title, url),
+                'title': title,
+                'summary': summary[:500] + '...' if len(summary) > 500 else summary,
+                'url': url,
+                'source': source['name'],
+                'category': source['category'],
+                'published_at': published_date.isoformat() if isinstance(published_date, datetime) else published_date,
+                'author': author,
+                'image_url': image_url,
+                'tags': tags
+            }
+            articles.append(article)
+        return articles
+    except Exception as e:
+        return []
+
+def lamuda_get_rss_news_api(query_parameters):
+    category = query_parameters.get('category', 'all')
+    source_filter = query_parameters.get('source', '')
+    limit = min(int(query_parameters.get('limit', 50)), 200)
+    sort = query_parameters.get('sort', 'published_desc')
+    target_sources = RSS_SOURCES
+    if category != 'all':
+        target_sources = [s for s in target_sources if s['category'] == category]
+    if source_filter:
+        target_sources = [s for s in target_sources if source_filter.lower() in s['name'].lower()]
+    all_articles = []
+    for source in target_sources:
+        all_articles.extend(fetch_rss_feed(source))
+    unique_articles = {}
+    for article in all_articles:
+        title_key = article['title'].lower().strip()
+        if title_key not in unique_articles:
+            unique_articles[title_key] = article
+        else:
+            existing = unique_articles[title_key]
+            if article['published_at'] and existing['published_at']:
+                try:
+                    if isinstance(article['published_at'], str):
+                        article_date = datetime.fromisoformat(article['published_at'].replace('Z', '+00:00'))
+                    else:
+                        article_date = article['published_at']
+                    if isinstance(existing['published_at'], str):
+                        existing_date = datetime.fromisoformat(existing['published_at'].replace('Z', '+00:00'))
+                    else:
+                        existing_date = existing['published_at']
+                    if article_date > existing_date:
+                        unique_articles[title_key] = article
+                except:
+                    pass
+    final_articles = list(unique_articles.values())
+    try:
+        if sort == 'published_desc':
+            final_articles.sort(key=lambda x: x['published_at'] or '', reverse=True)
+        elif sort == 'published_asc':
+            final_articles.sort(key=lambda x: x['published_at'] or '')
+        elif sort == 'title_asc':
+            final_articles.sort(key=lambda x: x['title'].lower())
+    except Exception:
+        pass
+    final_articles = final_articles[:limit]
+    return {
+        'status': 'success',
+        'data': final_articles,
+        'metadata': {
+            'total_sources': len(target_sources),
+            'total_articles': len(final_articles),
+            'sources_used': [s['name'] for s in target_sources],
+            'category_filter': category,
+            'source_filter': source_filter,
+            'sort': sort,
+            'last_updated': datetime.now().isoformat()
+        },
+        'timestamp': datetime.now().isoformat()
+    }
