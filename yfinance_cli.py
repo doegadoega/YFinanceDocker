@@ -25,6 +25,13 @@ from lambda_function import (
     get_stock_options_api,
     get_stock_sustainability_api,
     get_stock_home_api,
+    get_stock_rankings_api,
+    get_sector_rankings_api,
+    get_crypto_rankings_api,
+    get_markets_indices_api,
+    get_markets_currencies_api,
+    get_markets_commodities_api,
+    get_markets_status_api,
     get_api_gateway_url,
     # 共通関数をインポート（重複回避）
     format_currency,
@@ -100,6 +107,165 @@ def display_basic_info(ticker: str) -> None:
     """
     display_stock_info_local(ticker)
 
+def get_rankings_cli(ranking_type: str, market: str = "us", limit: int = 10) -> Optional[Dict[str, Any]]:
+    """
+    CLI用のランキング取得（Lambda関数直接使用）
+    
+    Args:
+        ranking_type (str): ランキング種別
+        market (str): 市場
+        limit (int): 取得件数
+    
+    Returns:
+        dict: ランキング結果
+    """
+    try:
+        query_params = {
+            'type': ranking_type,
+            'market': market,
+            'limit': str(limit)
+        }
+        result = get_stock_rankings_api(query_params)
+        
+        if not result.get('error'):
+            result['execution_info'] = get_execution_info(EXECUTION_MODE)
+        
+        return result
+            
+    except Exception as e:
+        print(f"予期しないエラー: {e}")
+        return {'error': f'ランキング取得エラー: {e}'}
+
+def get_sectors_cli(limit: int = 10) -> Optional[Dict[str, Any]]:
+    """
+    CLI用のセクターランキング取得（Lambda関数直接使用）
+    
+    Args:
+        limit (int): 取得件数
+    
+    Returns:
+        dict: セクターランキング結果
+    """
+    try:
+        query_params = {'limit': str(limit)}
+        result = get_sector_rankings_api(query_params)
+        
+        if not result.get('error'):
+            result['execution_info'] = get_execution_info(EXECUTION_MODE)
+        
+        return result
+            
+    except Exception as e:
+        print(f"予期しないエラー: {e}")
+        return {'error': f'セクターランキング取得エラー: {e}'}
+
+def get_crypto_cli(sort_by: str = "change", limit: int = 10) -> Optional[Dict[str, Any]]:
+    """
+    CLI用の暗号通貨ランキング取得（Lambda関数直接使用）
+    
+    Args:
+        sort_by (str): ソート基準
+        limit (int): 取得件数
+    
+    Returns:
+        dict: 暗号通貨ランキング結果
+    """
+    try:
+        query_params = {
+            'sort': sort_by,
+            'limit': str(limit)
+        }
+        result = get_crypto_rankings_api(query_params)
+        
+        if not result.get('error'):
+            result['execution_info'] = get_execution_info(EXECUTION_MODE)
+        
+        return result
+            
+    except Exception as e:
+        print(f"予期しないエラー: {e}")
+        return {'error': f'暗号通貨ランキング取得エラー: {e}'}
+
+def get_markets_indices_cli() -> Optional[Dict[str, Any]]:
+    """
+    CLI用の主要指数取得（Lambda関数直接使用）
+    
+    Returns:
+        dict: 主要指数結果
+    """
+    try:
+        query_params = {}
+        result = get_markets_indices_api(query_params)
+        
+        if not result.get('error'):
+            result['execution_info'] = get_execution_info(EXECUTION_MODE)
+        
+        return result
+            
+    except Exception as e:
+        print(f"予期しないエラー: {e}")
+        return {'error': f'主要指数取得エラー: {e}'}
+
+def get_markets_currencies_cli() -> Optional[Dict[str, Any]]:
+    """
+    CLI用の為替レート取得（Lambda関数直接使用）
+    
+    Returns:
+        dict: 為替レート結果
+    """
+    try:
+        query_params = {}
+        result = get_markets_currencies_api(query_params)
+        
+        if not result.get('error'):
+            result['execution_info'] = get_execution_info(EXECUTION_MODE)
+        
+        return result
+            
+    except Exception as e:
+        print(f"予期しないエラー: {e}")
+        return {'error': f'為替レート取得エラー: {e}'}
+
+def get_markets_commodities_cli() -> Optional[Dict[str, Any]]:
+    """
+    CLI用の商品価格取得（Lambda関数直接使用）
+    
+    Returns:
+        dict: 商品価格結果
+    """
+    try:
+        query_params = {}
+        result = get_markets_commodities_api(query_params)
+        
+        if not result.get('error'):
+            result['execution_info'] = get_execution_info(EXECUTION_MODE)
+        
+        return result
+            
+    except Exception as e:
+        print(f"予期しないエラー: {e}")
+        return {'error': f'商品価格取得エラー: {e}'}
+
+def get_markets_status_cli() -> Optional[Dict[str, Any]]:
+    """
+    CLI用の市場開閉状況取得（Lambda関数直接使用）
+    
+    Returns:
+        dict: 市場開閉状況結果
+    """
+    try:
+        query_params = {}
+        result = get_markets_status_api(query_params)
+        
+        if not result.get('error'):
+            result['execution_info'] = get_execution_info(EXECUTION_MODE)
+        
+        return result
+            
+    except Exception as e:
+        print(f"予期しないエラー: {e}")
+        return {'error': f'市場開閉状況取得エラー: {e}'}
+
 def main():
     """メイン関数 - Lambda関数を直接使用して完全統一"""
     parser = argparse.ArgumentParser(
@@ -120,6 +286,16 @@ def main():
   %(prog)s options AAPL             # AAPLのオプション情報
   %(prog)s sustainability AAPL      # AAPLのESG情報
   %(prog)s home                     # ホーム画面情報（株価指数、セクター情報）
+  %(prog)s rankings gainers --limit 10    # 上昇率TOP10
+  %(prog)s rankings losers --limit 10     # 下落率TOP10
+  %(prog)s rankings volume --limit 20     # 出来高TOP20
+  %(prog)s rankings market-cap --limit 20 # 時価総額TOP20
+  %(prog)s sectors --limit 10             # セクターランキングTOP10
+  %(prog)s crypto --sort change --limit 10 # 暗号通貨ランキング
+  %(prog)s indices                    # 主要指数一覧
+  %(prog)s currencies                 # 為替レート
+  %(prog)s commodities                # 商品価格
+  %(prog)s status                     # 市場開閉状況
   %(prog)s search toyota JP         # トヨタを日本で検索
   %(prog)s search apple US --json   # JSON形式で出力
   %(prog)s info AAPL 1mo --json     # JSON形式で出力
@@ -192,6 +368,37 @@ def main():
     # ホーム情報コマンド
     home_parser = subparsers.add_parser('home', help='ホーム画面用情報（株価指数、セクター情報）を取得')
     
+    # ランキング系コマンド
+    rankings_parser = subparsers.add_parser('rankings', help='株価関連ランキングを取得')
+    rankings_parser.add_argument('type', choices=['gainers', 'losers', 'volume', 'market-cap'],
+                                help='ランキング種別')
+    rankings_parser.add_argument('--market', default='us', choices=['us'],
+                                help='市場（デフォルト: us）')
+    rankings_parser.add_argument('--limit', type=int, default=10,
+                                help='取得件数（デフォルト: 10）')
+    
+    # セクターランキングコマンド
+    sectors_parser = subparsers.add_parser('sectors', help='セクター・業界ランキングを取得')
+    sectors_parser.add_argument('--limit', type=int, default=10,
+                               help='取得件数（デフォルト: 10）')
+    
+    # 暗号通貨ランキングコマンド
+    crypto_parser = subparsers.add_parser('crypto', help='暗号通貨ランキングを取得')
+    crypto_parser.add_argument('--sort', default='change', 
+                              choices=['change', 'price', 'volume', 'market_cap'],
+                              help='ソート基準（デフォルト: change）')
+    crypto_parser.add_argument('--limit', type=int, default=10,
+                              help='取得件数（デフォルト: 10）')
+    
+    # 市場情報系コマンド
+    indices_parser = subparsers.add_parser('indices', help='主要指数一覧を取得')
+    
+    currencies_parser = subparsers.add_parser('currencies', help='為替レートを取得')
+    
+    commodities_parser = subparsers.add_parser('commodities', help='商品価格を取得')
+    
+    status_parser = subparsers.add_parser('status', help='市場開閉状況を取得')
+
     args = parser.parse_args()
     
     # JSON出力モードの場合はヘッダーを表示しない
@@ -365,6 +572,90 @@ def main():
             else:
                 display_comprehensive_info_api(data)
     
+    elif args.command == 'rankings':
+        if not args.json:
+            print(f"\nランキング取得: {args.type} (市場: {args.market}, 件数: {args.limit})")
+            print("-" * 50)
+        
+        data = get_rankings_cli(args.type, args.market, args.limit)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'sectors':
+        if not args.json:
+            print(f"\nセクターランキング取得 (件数: {args.limit})")
+            print("-" * 35)
+        
+        data = get_sectors_cli(args.limit)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'crypto':
+        if not args.json:
+            print(f"\n暗号通貨ランキング取得 (ソート: {args.sort}, 件数: {args.limit})")
+            print("-" * 45)
+        
+        data = get_crypto_cli(args.sort, args.limit)
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'indices':
+        if not args.json:
+            print(f"\n主要指数一覧取得")
+            print("-" * 25)
+        
+        data = get_markets_indices_cli()
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'currencies':
+        if not args.json:
+            print(f"\n為替レート取得")
+            print("-" * 20)
+        
+        data = get_markets_currencies_cli()
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'commodities':
+        if not args.json:
+            print(f"\n商品価格取得")
+            print("-" * 20)
+        
+        data = get_markets_commodities_cli()
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+    
+    elif args.command == 'status':
+        if not args.json:
+            print(f"\n市場開閉状況取得")
+            print("-" * 25)
+        
+        data = get_markets_status_cli()
+        if data:
+            if args.json:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                display_comprehensive_info_api(data)
+
     else:
         parser.print_help()
         return

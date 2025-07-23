@@ -56,61 +56,67 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /basic
+            Path: /ticker/basic
             Method: get
         GetPrice:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /price
+            Path: /ticker/price
             Method: get
         GetHistory:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /history
+            Path: /ticker/history
             Method: get
         GetFinancials:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /financials
+            Path: /ticker/financials
             Method: get
         GetAnalysts:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /analysts
+            Path: /ticker/analysts
             Method: get
         GetHolders:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /holders
+            Path: /ticker/holders
             Method: get
         GetEvents:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /events
+            Path: /ticker/events
             Method: get
         GetNews:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /news
+            Path: /ticker/news
+            Method: get
+        GetNewsRss:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /news/rss
             Method: get
         GetOptions:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /options
+            Path: /ticker/options
             Method: get
         GetSustainability:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
-            Path: /sustainability
+            Path: /ticker/sustainability
             Method: get
         GetHome:
           Type: Api
@@ -123,6 +129,48 @@ Resources:
           Properties:
             RestApiId: !Ref YFinanceApi
             Path: /chart
+            Method: get
+        GetRankingsStocks:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /rankings/stocks
+            Method: get
+        GetRankingsSectors:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /rankings/sectors
+            Method: get
+        GetRankingsCrypto:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /rankings/crypto
+            Method: get
+        GetMarketsIndices:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /markets/indices
+            Method: get
+        GetMarketsCurrencies:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /markets/currencies
+            Method: get
+        GetMarketsCommodities:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /markets/commodities
+            Method: get
+        GetMarketsStatus:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /markets/status
             Method: get
     Metadata:
       Dockerfile: Dockerfile
