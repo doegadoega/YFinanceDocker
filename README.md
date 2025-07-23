@@ -9,7 +9,7 @@ YFinanceを使用した株式データ取得システムを、Lambda、Docker、
 - 同じ関数から呼び出し、同じデータ構造、同じエラーハンドリング
 - 重複コードの排除により保守性が大幅向上
 
-### 📊 包括的な金融データ（17種類）
+### 📊 包括的な金融データ（25種類以上）
 - 基本情報（企業名、業界、セクター）
 - 価格情報（現在価格、変化率、通貨）
 - ESG情報（環境・社会・ガバナンススコア）
@@ -21,6 +21,14 @@ YFinanceを使用した株式データ取得システムを、Lambda、Docker、
 - 株価履歴
 - ISIN情報
 - 推奨履歴
+- 金融ニュースRSS
+- 株価関連ランキング（上昇率、下落率、出来高、時価総額）
+- セクター・業界ランキング
+- 暗号通貨ランキング
+- 主要指数情報
+- 為替レート
+- 商品価格
+- 市場開閉状況
 - その他詳細データ
 
 ### 🔌 柔軟なAPI設計（新機能）
@@ -107,7 +115,16 @@ python yfinance_cli.py news AAPL              # ニュース情報のみ
 python yfinance_cli.py options AAPL           # オプション情報のみ
 python yfinance_cli.py sustainability AAPL    # ESG情報のみ
 python yfinance_cli.py home                    # ホーム画面情報
-```
+python yfinance_cli.py rankings gainers --limit 10    # 上昇率TOP10
+python yfinance_cli.py rankings losers --limit 10     # 下落率TOP10
+python yfinance_cli.py rankings volume --limit 20     # 出来高TOP20
+python yfinance_cli.py rankings market-cap --limit 20 # 時価総額TOP20
+python yfinance_cli.py sectors --limit 10             # セクターランキングTOP10
+python yfinance_cli.py crypto --sort change --limit 10 # 暗号通貨ランキング
+python yfinance_cli.py indices                    # 主要指数一覧
+python yfinance_cli.py currencies                 # 為替レート
+python yfinance_cli.py commodities                # 商品価格
+python yfinance_cli.py status                     # 市場開閉状況
 
 ### 2. Docker実行
 
@@ -134,6 +151,13 @@ docker-compose run --rm yfinance-local python yfinance_cli.py news AAPL
 docker-compose run --rm yfinance-local python yfinance_cli.py options AAPL
 docker-compose run --rm yfinance-local python yfinance_cli.py sustainability AAPL
 docker-compose run --rm yfinance-local python yfinance_cli.py home
+docker-compose run --rm yfinance-local python yfinance_cli.py rankings gainers --limit 10
+docker-compose run --rm yfinance-local python yfinance_cli.py sectors --limit 10
+docker-compose run --rm yfinance-local python yfinance_cli.py crypto --sort change --limit 10
+docker-compose run --rm yfinance-local python yfinance_cli.py indices
+docker-compose run --rm yfinance-local python yfinance_cli.py currencies
+docker-compose run --rm yfinance-local python yfinance_cli.py commodities
+docker-compose run --rm yfinance-local python yfinance_cli.py status
 
 # 検索機能実行
 docker-compose run --rm yfinance-local python yfinance_search.py Apple
@@ -178,6 +202,13 @@ curl "https://your-api-gateway-url/prod/news?ticker=AAPL"
 curl "https://your-api-gateway-url/prod/options?ticker=AAPL"
 curl "https://your-api-gateway-url/prod/sustainability?ticker=AAPL"
 curl "https://your-api-gateway-url/prod/home"
+curl "https://your-api-gateway-url/prod/rankings/stocks?type=gainers&market=sp500&limit=10"
+curl "https://your-api-gateway-url/prod/rankings/sectors?limit=10"
+curl "https://your-api-gateway-url/prod/rankings/crypto?sort=change&limit=10"
+curl "https://your-api-gateway-url/prod/markets/indices"
+curl "https://your-api-gateway-url/prod/markets/currencies"
+curl "https://your-api-gateway-url/prod/markets/commodities"
+curl "https://your-api-gateway-url/prod/markets/status"
 ```
 
 ### 4. ローカルHTTPサーバー
@@ -383,19 +414,74 @@ YFinanceDocker/
 - **例**: `GET /news/rss?limit=10`
 - **説明**: Yahoo Finance・MarketWatchの公式RSSから最新金融ニュースを一括取得
 
-#### 3.9 オプション情報 API
+### 3.13 株価関連ランキング API
+- **エンドポイント**: `/rankings/stocks`
+- **メソッド**: GET
+- **パラメータ**:
+  - `type`（必須）: ランキング種別（gainers, losers, volume, market-cap）
+  - `market`（必須）: 市場（sp500, nasdaq100）
+  - `limit`（任意）: 取得件数（デフォルト: 10, 最大: 50）
+- **例**: `GET /rankings/stocks?type=gainers&market=sp500&limit=10`
+- **説明**: S&P500・NASDAQ-100の主要銘柄からリアルタイムランキングを取得（画像付き）
+
+### 3.14 セクター・業界ランキング API
+- **エンドポイント**: `/rankings/sectors`
+- **メソッド**: GET
+- **パラメータ**:
+  - `limit`（任意）: 取得件数（デフォルト: 10, 最大: 20）
+- **例**: `GET /rankings/sectors?limit=10`
+- **説明**: 9つの主要セクター（Technology, Financial, Energy等）のパフォーマンス比較（画像付き）
+
+### 3.15 暗号通貨ランキング API
+- **エンドポイント**: `/rankings/crypto`
+- **メソッド**: GET
+- **パラメータ**:
+  - `sort`（任意）: ソート基準（change, price, volume, market_cap、デフォルト: change）
+  - `limit`（任意）: 取得件数（デフォルト: 10, 最大: 50）
+- **例**: `GET /rankings/crypto?sort=change&limit=10`
+- **説明**: 主要暗号通貨（BTC, ETH, BNB等）のランキング（画像付き）
+
+### 3.16 主要指数 API
+- **エンドポイント**: `/markets/indices`
+- **メソッド**: GET
+- **パラメータ**: なし
+- **例**: `GET /markets/indices`
+- **説明**: 主要株価指数（S&P500, NASDAQ, 日経225等）の現在値と変化率
+
+### 3.17 為替レート API
+- **エンドポイント**: `/markets/currencies`
+- **メソッド**: GET
+- **パラメータ**: なし
+- **例**: `GET /markets/currencies`
+- **説明**: 主要通貨ペア（USD/JPY, EUR/USD等）の為替レート
+
+### 3.18 商品価格 API
+- **エンドポイント**: `/markets/commodities`
+- **メソッド**: GET
+- **パラメータ**: なし
+- **例**: `GET /markets/commodities`
+- **説明**: 主要商品（金、銀、原油等）の価格情報
+
+### 3.19 市場開閉状況 API
+- **エンドポイント**: `/markets/status`
+- **メソッド**: GET
+- **パラメータ**: なし
+- **例**: `GET /markets/status`
+- **説明**: 主要市場（NYSE, NASDAQ, 東京証券取引所等）の開閉状況
+
+### 3.9 オプション情報 API
 - **エンドポイント**: `/options`
 - **メソッド**: GET
 - **パラメータ**: `ticker`（必須）
 - **例**: `GET /options?ticker=AAPL`
 
-#### 3.10 ESG情報 API
+### 3.10 ESG情報 API
 - **エンドポイント**: `/sustainability`
 - **メソッド**: GET
 - **パラメータ**: `ticker`（必須）
 - **例**: `GET /sustainability?ticker=AAPL`
 
-#### 3.11 ホーム画面情報 API
+### 3.11 ホーム画面情報 API
 - **エンドポイント**: `/home`
 - **メソッド**: GET
 - **パラメータ**: なし
@@ -649,6 +735,99 @@ YFinanceDocker/
 - **部分的な失敗対応**: 一部の要素でエラーが発生しても他の要素は取得
 - **詳細なエラー情報**: どの要素でエラーが発生したかを明確化
 - **堅牢性の向上**: 部分的な失敗でも可能な限り情報を提供
+
+## 🆕 新機能：ランキングAPI
+
+### 株価関連ランキング（/rankings/stocks）
+
+#### 利用可能なランキング種別
+- **gainers**: 上昇率ランキング（最も上昇した銘柄）
+- **losers**: 下落率ランキング（最も下落した銘柄）
+- **volume**: 出来高ランキング（最も取引が活発な銘柄）
+- **market-cap**: 時価総額ランキング（最も時価総額が高い銘柄）
+
+#### 利用可能な市場
+- **sp500**: S&P500構成銘柄（50銘柄）
+- **nasdaq100**: NASDAQ-100構成銘柄（50銘柄）
+
+#### 出力例
+```json
+{
+  "status": "success",
+  "type": "gainers",
+  "market": "sp500",
+  "data": [
+    {
+      "symbol": "NVDA",
+      "name": "NVIDIA Corporation",
+      "current_price": 850.25,
+      "previous_close": 820.10,
+      "price_change": 30.15,
+      "price_change_percent": 3.68,
+      "volume": 45000000,
+      "market_cap": 2100000000000,
+      "currency": "USD"
+    }
+  ],
+  "chart_image": "iVBORw0KGgoAAAANSUhEUgAA...",
+  "metadata": {
+    "total_stocks": 10,
+    "limit": 10,
+    "last_updated": "2025-07-22T12:30:00Z"
+  },
+  "timestamp": "2025-07-22T12:30:00Z"
+}
+```
+
+### セクター・業界ランキング（/rankings/sectors）
+
+#### 利用可能なランキング種別
+- **performance**: セクターETFパフォーマンスランキング
+- **constituent**: 構成銘柄平均パフォーマンスランキング
+
+#### 対象セクター
+- **Technology** (XLK): テクノロジー
+- **Financial** (XLF): 金融
+- **Energy** (XLE): エネルギー
+- **Healthcare** (XLV): ヘルスケア
+- **Industrial** (XLI): 工業
+- **Consumer Staples** (XLP): 生活必需品
+- **Consumer Discretionary** (XLY): 一般消費財
+- **Utilities** (XLU): 公益事業
+- **Real Estate** (XLRE): 不動産
+
+#### 出力例
+```json
+{
+  "status": "success",
+  "type": "performance",
+  "data": [
+    {
+      "symbol": "XLK",
+      "name": "Technology",
+      "current_price": 180.50,
+      "previous_close": 178.20,
+      "price_change": 2.30,
+      "price_change_percent": 1.29,
+      "constituent_change_avg": 1.45,
+      "constituent_count": 5,
+      "currency": "USD"
+    }
+  ],
+  "chart_image": "iVBORw0KGgoAAAANSUhEUgAA...",
+  "metadata": {
+    "total_sectors": 9,
+    "limit": 10,
+    "last_updated": "2025-07-22T12:30:00Z"
+  },
+  "timestamp": "2025-07-22T12:30:00Z"
+}
+```
+
+### 画像機能
+- **株価関連ランキング**: 横棒グラフでランキング表示（上昇/下落は緑/赤、その他は青）
+- **セクターランキング**: 2つの横棒グラフでETFパフォーマンスと構成銘柄平均を比較表示
+- **Base64エンコード**: 画像はBase64文字列で返却
 
 ## 🛠️ 技術スタック
 

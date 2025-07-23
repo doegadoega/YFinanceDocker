@@ -9,6 +9,10 @@ from typing import Union, Dict, Any, Optional
 import feedparser
 import hashlib
 import re
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from io import BytesIO
+import base64
 
 # ... 既存のimport文の下に追加 ...
 BULLISH_THRESHOLD = 0.5
@@ -27,6 +31,99 @@ RSS_SOURCES = [
         'category': 'market'
     }
 ]
+
+# ランキング用銘柄リスト
+STOCK_LISTS = {
+    'sp500': [
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'BRK-B', 'UNH', 'JNJ',
+        'JPM', 'V', 'PG', 'HD', 'MA', 'DIS', 'PYPL', 'BAC', 'ADBE', 'CRM',
+        'NFLX', 'KO', 'PEP', 'ABT', 'TMO', 'AVGO', 'COST', 'DHR', 'MRK', 'ACN',
+        'WMT', 'VZ', 'TXN', 'QCOM', 'HON', 'LLY', 'UNP', 'LOW', 'IBM', 'RTX',
+        'CAT', 'SPGI', 'AXP', 'PLD', 'GS', 'AMAT', 'DE', 'ADI', 'GILD', 'ISRG'
+    ],
+    'nasdaq100': [
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'NFLX', 'ADBE', 'CRM',
+        'PYPL', 'INTC', 'AMD', 'CSCO', 'QCOM', 'AVGO', 'TXN', 'ADI', 'MU', 'KLAC',
+        'LRCX', 'AMAT', 'ASML', 'ORLY', 'PAYX', 'ADP', 'INTU', 'SNPS', 'CDNS', 'MELI',
+        'JD', 'BIDU', 'PDD', 'NTES', 'BABA', 'TCOM', 'VRTX', 'REGN', 'GILD', 'AMGN',
+        'MRNA', 'BIIB', 'ILMN', 'IDXX', 'ALGN', 'DXCM', 'WDAY', 'ZS', 'CRWD', 'OKTA'
+    ]
+}
+
+# セクター・業界定義
+SECTORS = {
+    'XLK': {'name': 'Technology', 'symbols': ['AAPL', 'MSFT', 'GOOGL', 'NVDA', 'META', 'ADBE', 'CRM', 'PYPL', 'NFLX', 'TSLA']},
+    'XLF': {'name': 'Financial', 'symbols': ['JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'AXP', 'BLK', 'SCHW', 'USB']},
+    'XLE': {'name': 'Energy', 'symbols': ['XOM', 'CVX', 'COP', 'EOG', 'SLB', 'PSX', 'VLO', 'MPC', 'HAL', 'BKR']},
+    'XLV': {'name': 'Healthcare', 'symbols': ['JNJ', 'UNH', 'PFE', 'ABT', 'TMO', 'DHR', 'MRK', 'LLY', 'GILD', 'AMGN']},
+    'XLI': {'name': 'Industrial', 'symbols': ['UNP', 'HON', 'CAT', 'DE', 'RTX', 'LMT', 'BA', 'GE', 'MMM', 'UPS']},
+    'XLP': {'name': 'Consumer Staples', 'symbols': ['PG', 'KO', 'PEP', 'WMT', 'COST', 'PM', 'MO', 'EL', 'CL', 'GIS']},
+    'XLY': {'name': 'Consumer Discretionary', 'symbols': ['AMZN', 'TSLA', 'HD', 'DIS', 'MCD', 'NKE', 'SBUX', 'TJX', 'MAR', 'BKNG']},
+    'XLU': {'name': 'Utilities', 'symbols': ['NEE', 'DUK', 'SO', 'D', 'AEP', 'EXC', 'XEL', 'SRE', 'DTE', 'WEC']},
+    'XLRE': {'name': 'Real Estate', 'symbols': ['PLD', 'AMT', 'CCI', 'EQIX', 'PSA', 'O', 'SPG', 'WELL', 'EQR', 'AVB']}
+}
+
+# 主要銘柄リスト（より効率的な取得用）
+MAJOR_STOCKS = [
+    'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'JNJ', 'V',
+    'PG', 'UNH', 'HD', 'MA', 'BAC', 'ABBV', 'PFE', 'KO', 'AVGO', 'PEP',
+    'WMT', 'DIS', 'NFLX', 'ADBE', 'CRM', 'TMO', 'ACN', 'LLY', 'COST', 'NKE'
+]
+
+# セクターETF（改善版）
+SECTOR_ETFS = {
+    'Technology': 'XLK',
+    'Healthcare': 'XLV',
+    'Financial': 'XLF',
+    'Consumer Discretionary': 'XLY',
+    'Communication Services': 'XLC',
+    'Industrial': 'XLI',
+    'Consumer Staples': 'XLP',
+    'Energy': 'XLE',
+    'Utilities': 'XLU',
+    'Real Estate': 'XLRE',
+    'Materials': 'XLB'
+}
+
+# 暗号通貨
+CRYPTO_SYMBOLS = [
+    'BTC-USD', 'ETH-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 
+    'SOL-USD', 'DOGE-USD', 'MATIC-USD', 'DOT-USD', 'AVAX-USD'
+]
+
+# 主要指数
+MAJOR_INDICES = {
+    'S&P 500': '^GSPC',
+    'Dow Jones': '^DJI',
+    'NASDAQ': '^IXIC',
+    'Russell 2000': '^RUT',
+    'VIX': '^VIX',
+    'Nikkei 225': '^N225',
+    'FTSE 100': '^FTSE',
+    'DAX': '^GDAXI'
+}
+
+# 為替ペア
+CURRENCY_PAIRS = {
+    'USD/JPY': 'USDJPY=X',
+    'EUR/USD': 'EURUSD=X',
+    'GBP/USD': 'GBPUSD=X',
+    'USD/CHF': 'USDCHF=X',
+    'AUD/USD': 'AUDUSD=X',
+    'USD/CAD': 'USDCAD=X',
+    'USD/CNY': 'USDCNY=X'
+}
+
+# 商品
+COMMODITIES = {
+    'Gold': 'GC=F',
+    'Silver': 'SI=F',
+    'Crude Oil': 'CL=F',
+    'Natural Gas': 'NG=F',
+    'Copper': 'HG=F',
+    'Wheat': 'ZW=F',
+    'Corn': 'ZC=F'
+}
 
 def get_price_change_direction(price_change):
     if price_change is None:
@@ -547,6 +644,20 @@ def lambda_handler(event, context):
             result = get_stock_home_api()
         elif '/news/rss' in resource:
             result = lamuda_get_rss_news_api(query_parameters)
+        elif '/rankings/stocks' in resource:
+            result = get_stock_rankings_api(query_parameters)
+        elif '/rankings/sectors' in resource:
+            result = get_sector_rankings_api(query_parameters)
+        elif '/rankings/crypto' in resource:
+            result = get_crypto_rankings_api(query_parameters)
+        elif '/markets/indices' in resource:
+            result = get_markets_indices_api(query_parameters)
+        elif '/markets/currencies' in resource:
+            result = get_markets_currencies_api(query_parameters)
+        elif '/markets/commodities' in resource:
+            result = get_markets_commodities_api(query_parameters)
+        elif '/markets/status' in resource:
+            result = get_markets_status_api(query_parameters)
         else:
             return {
                 'statusCode': 404,
@@ -1943,6 +2054,715 @@ def generate_swagger_ui_html(event=None, context=None):
                     ],
                     "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"status": {"type": "string"}, "data": {"type": "array"}, "count": {"type": "integer"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
+            },
+            "/rankings/stocks": {
+                "get": {
+                    "summary": "株価関連ランキング取得",
+                    "description": "指定された市場の株価関連ランキングを取得します",
+                    "parameters": [
+                        {"name": "type", "in": "query", "required": True, "description": "ランキング種別（例: gainers, losers, volume, market-cap）", "schema": {"type": "string", "enum": ["gainers", "losers", "volume", "market-cap"]}},
+                        {"name": "market", "in": "query", "required": True, "description": "市場（例: sp500, nasdaq100）", "schema": {"type": "string", "enum": ["sp500", "nasdaq100"]}},
+                        {"name": "limit", "in": "query", "required": False, "description": "取得件数（デフォルト: 10、最大: 50）", "schema": {"type": "integer", "default": 10, "maximum": 50}}
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "成功",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "status": {
+                                                "type": "string",
+                                                "description": "ステータス"
+                                            },
+                                            "type": {
+                                                "type": "string",
+                                                "description": "ランキング種別"
+                                            },
+                                            "market": {
+                                                "type": "string",
+                                                "description": "市場"
+                                            },
+                                            "data": {
+                                                "type": "array",
+                                                "description": "ランキングデータ",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "symbol": {
+                                                            "type": "string",
+                                                            "description": "銘柄シンボル"
+                                                        },
+                                                        "name": {
+                                                            "type": "string",
+                                                            "description": "銘柄名"
+                                                        },
+                                                        "current_price": {
+                                                            "type": "number",
+                                                            "description": "現在の株価"
+                                                        },
+                                                        "previous_close": {
+                                                            "type": "number",
+                                                            "description": "前日の終値"
+                                                        },
+                                                        "price_change": {
+                                                            "type": "number",
+                                                            "description": "価格変化"
+                                                        },
+                                                        "price_change_percent": {
+                                                            "type": "number",
+                                                            "description": "価格変化率"
+                                                        },
+                                                        "volume": {
+                                                            "type": "integer",
+                                                            "description": "出来高"
+                                                        },
+                                                        "market_cap": {
+                                                            "type": "integer",
+                                                            "description": "時価総額"
+                                                        },
+                                                        "currency": {
+                                                            "type": "string",
+                                                            "description": "通貨コード"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "chart_image": {
+                                                "type": "string",
+                                                "description": "ランキングチャート画像"
+                                            },
+                                            "metadata": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "total_stocks": {
+                                                        "type": "integer",
+                                                        "description": "ランキング銘柄数"
+                                                    },
+                                                    "limit": {
+                                                        "type": "integer",
+                                                        "description": "取得件数"
+                                                    },
+                                                    "last_updated": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "最終更新日時"
+                                                    }
+                                                }
+                                            },
+                                            "execution_info": {
+                                                "type": "object",
+                                                "description": "実行環境情報"
+                                            },
+                                            "timestamp": {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "description": "データ取得日時"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/rankings/sectors": {
+                "get": {
+                    "summary": "セクター・業界ランキング取得",
+                    "description": "指定されたセクターの業界ランキングを取得します",
+                    "parameters": [
+                        {"name": "type", "in": "query", "required": True, "description": "ランキング種別（例: performance, constituent）", "schema": {"type": "string", "enum": ["performance", "constituent"]}},
+                        {"name": "sector", "in": "query", "required": True, "description": "セクター（例: XLK, XLF）", "schema": {"type": "string", "enum": ["XLK", "XLF", "XLE", "XLV", "XLI", "XLP", "XLY", "XLU", "XLRE"]}},
+                        {"name": "limit", "in": "query", "required": False, "description": "取得件数（デフォルト: 10、最大: 20）", "schema": {"type": "integer", "default": 10, "maximum": 20}}
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "成功",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "status": {
+                                                "type": "string",
+                                                "description": "ステータス"
+                                            },
+                                            "type": {
+                                                "type": "string",
+                                                "description": "ランキング種別"
+                                            },
+                                            "sector": {
+                                                "type": "string",
+                                                "description": "セクター"
+                                            },
+                                            "data": {
+                                                "type": "array",
+                                                "description": "ランキングデータ",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "symbol": {
+                                                            "type": "string",
+                                                            "description": "銘柄シンボル"
+                                                        },
+                                                        "name": {
+                                                            "type": "string",
+                                                            "description": "銘柄名"
+                                                        },
+                                                        "current_price": {
+                                                            "type": "number",
+                                                            "description": "現在の株価"
+                                                        },
+                                                        "previous_close": {
+                                                            "type": "number",
+                                                            "description": "前日の終値"
+                                                        },
+                                                        "price_change": {
+                                                            "type": "number",
+                                                            "description": "価格変化"
+                                                        },
+                                                        "price_change_percent": {
+                                                            "type": "number",
+                                                            "description": "価格変化率"
+                                                        },
+                                                        "constituent_change_avg": {
+                                                            "type": "number",
+                                                            "description": "構成銘柄平均変化率"
+                                                        },
+                                                        "constituent_count": {
+                                                            "type": "integer",
+                                                            "description": "構成銘柄数"
+                                                        },
+                                                        "currency": {
+                                                            "type": "string",
+                                                            "description": "通貨コード"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "chart_image": {
+                                                "type": "string",
+                                                "description": "ランキングチャート画像"
+                                            },
+                                            "metadata": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "total_sectors": {
+                                                        "type": "integer",
+                                                        "description": "ランキングセクター数"
+                                                    },
+                                                    "limit": {
+                                                        "type": "integer",
+                                                        "description": "取得件数"
+                                                    },
+                                                    "last_updated": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "最終更新日時"
+                                                    }
+                                                }
+                                            },
+                                            "execution_info": {
+                                                "type": "object",
+                                                "description": "実行環境情報"
+                                            },
+                                            "timestamp": {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "description": "データ取得日時"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/rankings/crypto": {
+                "get": {
+                    "summary": "暗号通貨ランキング取得",
+                    "description": "指定された暗号通貨のランキングを取得します",
+                    "parameters": [
+                        {"name": "limit", "in": "query", "required": True, "description": "取得件数（デフォルト: 10、最大: 20）", "schema": {"type": "integer", "default": 10, "maximum": 20}},
+                        {"name": "sort", "in": "query", "required": False, "description": "ソート基準（デフォルト: change、選択可能: change, price, volume, market_cap）", "schema": {"type": "string", "enum": ["change", "price", "volume", "market_cap"]}}
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "成功",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "status": {
+                                                "type": "string",
+                                                "description": "ステータス"
+                                            },
+                                            "type": {
+                                                "type": "string",
+                                                "description": "ランキング種別"
+                                            },
+                                            "data": {
+                                                "type": "array",
+                                                "description": "ランキングデータ",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "symbol": {
+                                                            "type": "string",
+                                                            "description": "銘柄シンボル"
+                                                        },
+                                                        "name": {
+                                                            "type": "string",
+                                                            "description": "銘柄名"
+                                                        },
+                                                        "price": {
+                                                            "type": "number",
+                                                            "description": "現在の価格"
+                                                        },
+                                                        "change": {
+                                                            "type": "number",
+                                                            "description": "価格変化"
+                                                        },
+                                                        "change_percent": {
+                                                            "type": "number",
+                                                            "description": "価格変化率"
+                                                        },
+                                                        "volume": {
+                                                            "type": "integer",
+                                                            "description": "出来高"
+                                                        },
+                                                        "market_cap": {
+                                                            "type": "integer",
+                                                            "description": "時価総額"
+                                                        },
+                                                        "rank": {
+                                                            "type": "integer",
+                                                            "description": "ランク"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "metadata": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "total_cryptos": {
+                                                        "type": "integer",
+                                                        "description": "ランキング銘柄数"
+                                                    },
+                                                    "limit": {
+                                                        "type": "integer",
+                                                        "description": "取得件数"
+                                                    },
+                                                    "sort_by": {
+                                                        "type": "string",
+                                                        "description": "ソート基準"
+                                                    },
+                                                    "last_updated": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "最終更新日時"
+                                                    }
+                                                }
+                                            },
+                                            "execution_info": {
+                                                "type": "object",
+                                                "description": "実行環境情報"
+                                            },
+                                            "timestamp": {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "description": "データ取得日時"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/markets/indices": {
+                "get": {
+                    "summary": "主要指数一覧取得",
+                    "description": "指定された主要指数の一覧を取得します",
+                    "parameters": [
+                        {"name": "limit", "in": "query", "required": False, "description": "取得件数（デフォルト: 10、最大: 20）", "schema": {"type": "integer", "default": 10, "maximum": 20}}
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "成功",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "status": {
+                                                "type": "string",
+                                                "description": "ステータス"
+                                            },
+                                            "type": {
+                                                "type": "string",
+                                                "description": "ランキング種別"
+                                            },
+                                            "data": {
+                                                "type": "array",
+                                                "description": "ランキングデータ",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "name": {
+                                                            "type": "string",
+                                                            "description": "指数名"
+                                                        },
+                                                        "symbol": {
+                                                            "type": "string",
+                                                            "description": "指数シンボル"
+                                                        },
+                                                        "value": {
+                                                            "type": "number",
+                                                            "description": "現在の値"
+                                                        },
+                                                        "change": {
+                                                            "type": "number",
+                                                            "description": "価格変化"
+                                                        },
+                                                        "change_percent": {
+                                                            "type": "number",
+                                                            "description": "価格変化率"
+                                                        },
+                                                        "volume": {
+                                                            "type": "integer",
+                                                            "description": "出来高"
+                                                        },
+                                                        "rank": {
+                                                            "type": "integer",
+                                                            "description": "ランク"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "metadata": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "total_indices": {
+                                                        "type": "integer",
+                                                        "description": "ランキング銘柄数"
+                                                    },
+                                                    "limit": {
+                                                        "type": "integer",
+                                                        "description": "取得件数"
+                                                    },
+                                                    "last_updated": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "最終更新日時"
+                                                    }
+                                                }
+                                            },
+                                            "execution_info": {
+                                                "type": "object",
+                                                "description": "実行環境情報"
+                                            },
+                                            "timestamp": {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "description": "データ取得日時"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/markets/currencies": {
+                "get": {
+                    "summary": "為替レート取得",
+                    "description": "指定された通貨ペアの為替レートを取得します",
+                    "parameters": [
+                        {"name": "limit", "in": "query", "required": False, "description": "取得件数（デフォルト: 10、最大: 20）", "schema": {"type": "integer", "default": 10, "maximum": 20}}
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "成功",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "status": {
+                                                "type": "string",
+                                                "description": "ステータス"
+                                            },
+                                            "type": {
+                                                "type": "string",
+                                                "description": "ランキング種別"
+                                            },
+                                            "data": {
+                                                "type": "array",
+                                                "description": "ランキングデータ",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "pair": {
+                                                            "type": "string",
+                                                            "description": "通貨ペア"
+                                                        },
+                                                        "symbol": {
+                                                            "type": "string",
+                                                            "description": "通貨シンボル"
+                                                        },
+                                                        "rate": {
+                                                            "type": "number",
+                                                            "description": "レート"
+                                                        },
+                                                        "change": {
+                                                            "type": "number",
+                                                            "description": "変化"
+                                                        },
+                                                        "change_percent": {
+                                                            "type": "number",
+                                                            "description": "変化率"
+                                                        },
+                                                        "rank": {
+                                                            "type": "integer",
+                                                            "description": "ランク"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "metadata": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "total_pairs": {
+                                                        "type": "integer",
+                                                        "description": "ランキング銘柄数"
+                                                    },
+                                                    "limit": {
+                                                        "type": "integer",
+                                                        "description": "取得件数"
+                                                    },
+                                                    "last_updated": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "最終更新日時"
+                                                    }
+                                                }
+                                            },
+                                            "execution_info": {
+                                                "type": "object",
+                                                "description": "実行環境情報"
+                                            },
+                                            "timestamp": {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "description": "データ取得日時"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/markets/commodities": {
+                "get": {
+                    "summary": "商品価格取得",
+                    "description": "指定された商品の価格を取得します",
+                    "parameters": [
+                        {"name": "limit", "in": "query", "required": False, "description": "取得件数（デフォルト: 10、最大: 20）", "schema": {"type": "integer", "default": 10, "maximum": 20}}
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "成功",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "status": {
+                                                "type": "string",
+                                                "description": "ステータス"
+                                            },
+                                            "type": {
+                                                "type": "string",
+                                                "description": "ランキング種別"
+                                            },
+                                            "data": {
+                                                "type": "array",
+                                                "description": "ランキングデータ",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "name": {
+                                                            "type": "string",
+                                                            "description": "商品名"
+                                                        },
+                                                        "symbol": {
+                                                            "type": "string",
+                                                            "description": "商品シンボル"
+                                                        },
+                                                        "price": {
+                                                            "type": "number",
+                                                            "description": "現在の価格"
+                                                        },
+                                                        "change": {
+                                                            "type": "number",
+                                                            "description": "価格変化"
+                                                        },
+                                                        "change_percent": {
+                                                            "type": "number",
+                                                            "description": "価格変化率"
+                                                        },
+                                                        "volume": {
+                                                            "type": "integer",
+                                                            "description": "出来高"
+                                                        },
+                                                        "rank": {
+                                                            "type": "integer",
+                                                            "description": "ランク"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "metadata": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "total_commodities": {
+                                                        "type": "integer",
+                                                        "description": "ランキング銘柄数"
+                                                    },
+                                                    "limit": {
+                                                        "type": "integer",
+                                                        "description": "取得件数"
+                                                    },
+                                                    "last_updated": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "最終更新日時"
+                                                    }
+                                                }
+                                            },
+                                            "execution_info": {
+                                                "type": "object",
+                                                "description": "実行環境情報"
+                                            },
+                                            "timestamp": {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "description": "データ取得日時"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/markets/status": {
+                "get": {
+                    "summary": "市場開閉状況取得",
+                    "description": "指定された市場の開閉状況を取得します",
+                    "parameters": [
+                        {"name": "limit", "in": "query", "required": False, "description": "取得件数（デフォルト: 10、最大: 20）", "schema": {"type": "integer", "default": 10, "maximum": 20}}
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "成功",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "status": {
+                                                "type": "string",
+                                                "description": "ステータス"
+                                            },
+                                            "data": {
+                                                "type": "array",
+                                                "description": "市場開閉状況データ",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "market": {
+                                                            "type": "string",
+                                                            "description": "市場名"
+                                                        },
+                                                        "timezone": {
+                                                            "type": "string",
+                                                            "description": "タイムゾーン"
+                                                        },
+                                                        "local_time": {
+                                                            "type": "string",
+                                                            "format": "date-time",
+                                                            "description": "現地時間"
+                                                        },
+                                                        "is_open": {
+                                                            "type": "boolean",
+                                                            "description": "市場が開いているか"
+                                                        },
+                                                        "is_business_day": {
+                                                            "type": "boolean",
+                                                            "description": "営業日か"
+                                                        },
+                                                        "open_time": {
+                                                            "type": "string",
+                                                            "format": "time",
+                                                            "description": "市場開始時間"
+                                                        },
+                                                        "close_time": {
+                                                            "type": "string",
+                                                            "format": "time",
+                                                            "description": "市場終了時間"
+                                                        },
+                                                        "rank": {
+                                                            "type": "integer",
+                                                            "description": "ランク"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "metadata": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "total_markets": {
+                                                        "type": "integer",
+                                                        "description": "ランキング銘柄数"
+                                                    },
+                                                    "limit": {
+                                                        "type": "integer",
+                                                        "description": "取得件数"
+                                                    },
+                                                    "last_updated": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "最終更新日時"
+                                                    }
+                                                }
+                                            },
+                                            "execution_info": {
+                                                "type": "object",
+                                                "description": "実行環境情報"
+                                            },
+                                            "timestamp": {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "description": "データ取得日時"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -2185,3 +3005,548 @@ def lamuda_get_rss_news_api(query_parameters):
         },
         'timestamp': datetime.now().isoformat()
     }
+
+def get_stock_rankings_api(query_parameters):
+    """株価関連ランキング取得API（改善版）"""
+    try:
+        ranking_type = query_parameters.get('type', 'gainers')
+        limit = min(int(query_parameters.get('limit', 10)), 50)
+        market = query_parameters.get('market', 'us')
+        
+        # 主要銘柄から取得
+        stocks = get_multiple_stock_data(MAJOR_STOCKS)
+        
+        if ranking_type == 'gainers':
+            # 上昇銘柄のみフィルタ
+            rankings = [stock for stock in stocks if stock['change_percent'] > 0]
+            rankings.sort(key=lambda x: x['change_percent'], reverse=True)
+        elif ranking_type == 'losers':
+            # 下落銘柄のみフィルタ
+            rankings = [stock for stock in stocks if stock['change_percent'] < 0]
+            rankings.sort(key=lambda x: x['change_percent'])
+        elif ranking_type == 'volume':
+            # 出来高でソート
+            rankings = stocks
+            rankings.sort(key=lambda x: x['volume'], reverse=True)
+        elif ranking_type == 'market-cap':
+            # 時価総額データがある銘柄のみ
+            rankings = [stock for stock in stocks if stock.get('market_cap')]
+            rankings.sort(key=lambda x: x['market_cap'], reverse=True)
+        else:
+            return {'error': f'無効なランキング種別: {ranking_type}'}
+        
+        # 制限数で切り取り
+        rankings = rankings[:limit]
+        
+        # ランク付け
+        for i, stock in enumerate(rankings):
+            stock['rank'] = i + 1
+        
+        # 画像生成
+        chart_image = generate_ranking_chart(rankings, ranking_type)
+        
+        return {
+            'status': 'success',
+            'type': ranking_type,
+            'market': market,
+            'data': rankings,
+            'chart_image': chart_image,
+            'metadata': {
+                'total_stocks': len(rankings),
+                'limit': limit,
+                'last_updated': datetime.now().isoformat()
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {'error': f'ランキング取得エラー: {str(e)}'}
+
+def get_sector_rankings_api(query_parameters):
+    """セクター・業界ランキング取得API（改善版）"""
+    try:
+        limit = min(int(query_parameters.get('limit', 10)), 20)
+        
+        sector_data = []
+        
+        for sector_name, etf_symbol in SECTOR_ETFS.items():
+            try:
+                ticker = yf.Ticker(etf_symbol)
+                hist = ticker.history(period="2d")
+                info = ticker.info
+                
+                if len(hist) >= 2:
+                    current_price = hist['Close'].iloc[-1]
+                    prev_price = hist['Close'].iloc[-2]
+                    change = current_price - prev_price
+                    change_percent = (change / prev_price) * 100
+                    
+                    sector_data.append({
+                        'sector': sector_name,
+                        'symbol': etf_symbol,
+                        'name': info.get('longName', f'{sector_name} Sector ETF'),
+                        'price': round(float(current_price), 2),
+                        'change': round(float(change), 2),
+                        'change_percent': round(float(change_percent), 2),
+                        'volume': int(hist['Volume'].iloc[-1]) if hist['Volume'].iloc[-1] else 0
+                    })
+            except Exception as e:
+                continue
+        
+        # パフォーマンス順でソート
+        sector_data.sort(key=lambda x: x['change_percent'], reverse=True)
+        
+        # ランク付け
+        for i, sector in enumerate(sector_data[:limit]):
+            sector['rank'] = i + 1
+        
+        # 画像生成
+        chart_image = generate_sector_chart(sector_data[:limit], 'performance')
+        
+        return {
+            'status': 'success',
+            'type': 'performance',
+            'data': sector_data[:limit],
+            'chart_image': chart_image,
+            'metadata': {
+                'total_sectors': len(sector_data),
+                'limit': limit,
+                'last_updated': datetime.now().isoformat()
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {'error': f'セクターランキング取得エラー: {str(e)}'}
+
+def get_crypto_rankings_api(query_parameters):
+    """暗号通貨ランキング取得API"""
+    try:
+        limit = min(int(query_parameters.get('limit', 10)), 20)
+        sort_by = query_parameters.get('sort', 'change')  # change, price, volume, market_cap
+        
+        crypto_data = []
+        
+        for symbol in CRYPTO_SYMBOLS:
+            try:
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period="2d")
+                info = ticker.info
+                
+                if len(hist) >= 2:
+                    current_price = hist['Close'].iloc[-1]
+                    prev_price = hist['Close'].iloc[-2]
+                    change = current_price - prev_price
+                    change_percent = (change / prev_price) * 100
+                    
+                    crypto_data.append({
+                        'symbol': symbol,
+                        'name': symbol.replace('-USD', ''),
+                        'price': round(float(current_price), 2),
+                        'change': round(float(change), 2),
+                        'change_percent': round(float(change_percent), 2),
+                        'volume': int(hist['Volume'].iloc[-1]) if hist['Volume'].iloc[-1] else 0,
+                        'market_cap': info.get('marketCap')
+                    })
+            except Exception as e:
+                continue
+        
+        # ソート
+        if sort_by == 'change':
+            crypto_data.sort(key=lambda x: x['change_percent'], reverse=True)
+        elif sort_by == 'price':
+            crypto_data.sort(key=lambda x: x['price'], reverse=True)
+        elif sort_by == 'volume':
+            crypto_data.sort(key=lambda x: x['volume'], reverse=True)
+        elif sort_by == 'market_cap':
+            crypto_data = [c for c in crypto_data if c.get('market_cap')]
+            crypto_data.sort(key=lambda x: x['market_cap'], reverse=True)
+        
+        # ランク付け
+        for i, crypto in enumerate(crypto_data[:limit]):
+            crypto['rank'] = i + 1
+        
+        return {
+            'status': 'success',
+            'type': 'crypto',
+            'data': crypto_data[:limit],
+            'metadata': {
+                'sort_by': sort_by,
+                'total_cryptos': len(crypto_data),
+                'last_updated': datetime.now().isoformat()
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {'error': f'暗号通貨ランキング取得エラー: {str(e)}'}
+
+def get_markets_indices_api(query_parameters):
+    """主要指数一覧取得API"""
+    try:
+        indices_data = []
+        
+        for index_name, symbol in MAJOR_INDICES.items():
+            try:
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period="2d")
+                
+                if len(hist) >= 2:
+                    current_value = hist['Close'].iloc[-1]
+                    prev_value = hist['Close'].iloc[-2]
+                    change = current_value - prev_value
+                    change_percent = (change / prev_value) * 100
+                    
+                    indices_data.append({
+                        'name': index_name,
+                        'symbol': symbol,
+                        'value': round(float(current_value), 2),
+                        'change': round(float(change), 2),
+                        'change_percent': round(float(change_percent), 2),
+                        'volume': int(hist['Volume'].iloc[-1]) if hist['Volume'].iloc[-1] else 0
+                    })
+            except Exception as e:
+                continue
+        
+        return {
+            'status': 'success',
+            'data': indices_data,
+            'metadata': {
+                'total_indices': len(indices_data),
+                'last_updated': datetime.now().isoformat()
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {'error': f'指数データ取得エラー: {str(e)}'}
+
+def get_markets_currencies_api(query_parameters):
+    """為替レート取得API"""
+    try:
+        currency_data = []
+        
+        for pair_name, symbol in CURRENCY_PAIRS.items():
+            try:
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period="2d")
+                
+                if len(hist) >= 2:
+                    current_rate = hist['Close'].iloc[-1]
+                    prev_rate = hist['Close'].iloc[-2]
+                    change = current_rate - prev_rate
+                    change_percent = (change / prev_rate) * 100
+                    
+                    currency_data.append({
+                        'pair': pair_name,
+                        'symbol': symbol,
+                        'rate': round(float(current_rate), 4),
+                        'change': round(float(change), 4),
+                        'change_percent': round(float(change_percent), 2)
+                    })
+            except Exception as e:
+                continue
+        
+        return {
+            'status': 'success',
+            'data': currency_data,
+            'metadata': {
+                'total_pairs': len(currency_data),
+                'last_updated': datetime.now().isoformat()
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {'error': f'為替データ取得エラー: {str(e)}'}
+
+def get_markets_commodities_api(query_parameters):
+    """商品価格取得API"""
+    try:
+        commodity_data = []
+        
+        for commodity_name, symbol in COMMODITIES.items():
+            try:
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period="2d")
+                
+                if len(hist) >= 2:
+                    current_price = hist['Close'].iloc[-1]
+                    prev_price = hist['Close'].iloc[-2]
+                    change = current_price - prev_price
+                    change_percent = (change / prev_price) * 100
+                    
+                    commodity_data.append({
+                        'name': commodity_name,
+                        'symbol': symbol,
+                        'price': round(float(current_price), 2),
+                        'change': round(float(change), 2),
+                        'change_percent': round(float(change_percent), 2),
+                        'volume': int(hist['Volume'].iloc[-1]) if hist['Volume'].iloc[-1] else 0
+                    })
+            except Exception as e:
+                continue
+        
+        return {
+            'status': 'success',
+            'data': commodity_data,
+            'metadata': {
+                'total_commodities': len(commodity_data),
+                'last_updated': datetime.now().isoformat()
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {'error': f'商品データ取得エラー: {str(e)}'}
+
+def get_markets_status_api(query_parameters):
+    """市場開閉状況取得API"""
+    try:
+        # 主要市場の営業時間
+        markets = [
+            {
+                'name': 'NYSE/NASDAQ',
+                'timezone': 'US/Eastern',
+                'open_time': '09:30',
+                'close_time': '16:00',
+                'days': [0, 1, 2, 3, 4]  # Monday-Friday
+            },
+            {
+                'name': 'Tokyo Stock Exchange',
+                'timezone': 'Asia/Tokyo',
+                'open_time': '09:00',
+                'close_time': '15:00',
+                'days': [0, 1, 2, 3, 4]
+            },
+            {
+                'name': 'London Stock Exchange',
+                'timezone': 'Europe/London',
+                'open_time': '08:00',
+                'close_time': '16:30',
+                'days': [0, 1, 2, 3, 4]
+            }
+        ]
+        
+        market_status = []
+        
+        for market in markets:
+            try:
+                # 簡易的な時間計算（pytzなし）
+                from datetime import datetime, timedelta
+                import time
+                
+                # UTC時間を取得
+                utc_now = datetime.utcnow()
+                
+                # タイムゾーンオフセット（簡易版）
+                tz_offsets = {
+                    'US/Eastern': -5,
+                    'Asia/Tokyo': 9,
+                    'Europe/London': 0
+                }
+                
+                offset = tz_offsets.get(market['timezone'], 0)
+                local_time = utc_now + timedelta(hours=offset)
+                
+                # 現在の曜日が営業日かチェック
+                is_business_day = local_time.weekday() in market['days']
+                
+                # 営業時間内かチェック
+                open_time = datetime.strptime(market['open_time'], '%H:%M').time()
+                close_time = datetime.strptime(market['close_time'], '%H:%M').time()
+                
+                is_open = (is_business_day and 
+                          open_time <= local_time.time() <= close_time)
+                
+                market_status.append({
+                    'market': market['name'],
+                    'timezone': market['timezone'],
+                    'local_time': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                    'is_open': is_open,
+                    'is_business_day': is_business_day,
+                    'open_time': market['open_time'],
+                    'close_time': market['close_time']
+                })
+                
+            except Exception as e:
+                continue
+        
+        return {
+            'status': 'success',
+            'data': market_status,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {'error': f'市場状況取得エラー: {str(e)}'}
+
+def safe_get_stock_data(symbol):
+    """安全に株価データを取得"""
+    try:
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period="2d")
+        info = ticker.info
+        
+        if len(hist) < 2:
+            return None
+            
+        current_price = hist['Close'].iloc[-1]
+        prev_price = hist['Close'].iloc[-2]
+        change = current_price - prev_price
+        change_percent = (change / prev_price) * 100
+        
+        return {
+            'symbol': symbol,
+            'name': info.get('longName', info.get('shortName', symbol)),
+            'price': round(float(current_price), 2),
+            'change': round(float(change), 2),
+            'change_percent': round(float(change_percent), 2),
+            'volume': int(hist['Volume'].iloc[-1]) if hist['Volume'].iloc[-1] else 0,
+            'market_cap': info.get('marketCap'),
+            'sector': info.get('sector', 'Unknown')
+        }
+    except Exception as e:
+        return None
+
+def get_multiple_stock_data(symbols):
+    """複数銘柄のデータを効率的に取得"""
+    try:
+        # yfinanceで複数銘柄を一度に取得
+        tickers = yf.Tickers(' '.join(symbols))
+        
+        results = []
+        for symbol in symbols:
+            try:
+                ticker = tickers.tickers[symbol]
+                hist = ticker.history(period="2d")
+                info = ticker.info
+                
+                if len(hist) >= 2:
+                    current_price = hist['Close'].iloc[-1]
+                    prev_price = hist['Close'].iloc[-2]
+                    change = current_price - prev_price
+                    change_percent = (change / prev_price) * 100
+                    
+                    data = {
+                        'symbol': symbol,
+                        'name': info.get('longName', info.get('shortName', symbol)),
+                        'price': round(float(current_price), 2),
+                        'change': round(float(change), 2),
+                        'change_percent': round(float(change_percent), 2),
+                        'volume': int(hist['Volume'].iloc[-1]) if hist['Volume'].iloc[-1] else 0,
+                        'market_cap': info.get('marketCap'),
+                        'sector': info.get('sector', 'Unknown')
+                    }
+                    results.append(data)
+            except Exception as e:
+                continue
+        
+        return results
+    except Exception as e:
+        # フォールバック: 個別取得
+        results = []
+        for symbol in symbols:
+            data = safe_get_stock_data(symbol)
+            if data:
+                results.append(data)
+        return results
+
+def generate_ranking_chart(rankings, ranking_type):
+    """ランキングチャート画像生成"""
+    try:
+        if not rankings:
+            return None
+            
+        plt.figure(figsize=(12, 8))
+        
+        symbols = [item['symbol'] for item in rankings]
+        values = []
+        
+        if ranking_type in ['gainers', 'losers']:
+            values = [item['price_change_percent'] for item in rankings]
+            ylabel = 'Price Change (%)'
+            title = f'Top {len(rankings)} {ranking_type.title()}'
+        elif ranking_type == 'volume':
+            values = [item['volume'] / 1000000 for item in rankings]  # 百万単位
+            ylabel = 'Volume (Millions)'
+            title = f'Top {len(rankings)} Volume Leaders'
+        elif ranking_type == 'market-cap':
+            values = [item['market_cap'] / 1000000000 for item in rankings]  # 十億単位
+            ylabel = 'Market Cap (Billions)'
+            title = f'Top {len(rankings)} Market Cap Leaders'
+        
+        colors = ['green' if x >= 0 else 'red' for x in values] if ranking_type in ['gainers', 'losers'] else ['blue'] * len(values)
+        
+        bars = plt.barh(symbols, values, color=colors)
+        plt.xlabel(ylabel)
+        plt.title(title)
+        plt.gca().invert_yaxis()
+        
+        # 値ラベルを追加
+        for i, (bar, value) in enumerate(zip(bars, values)):
+            plt.text(bar.get_width() + (max(values) * 0.01), bar.get_y() + bar.get_height()/2, 
+                    f'{value:.1f}', va='center')
+        
+        plt.tight_layout()
+        
+        # 画像をBase64エンコード
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+        plt.close()
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        
+        return img_base64
+        
+    except Exception as e:
+        return None
+
+def generate_sector_chart(sector_data, ranking_type):
+    """セクターランキングチャート画像生成"""
+    try:
+        if not sector_data:
+            return None
+            
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+        
+        sectors = [item['name'] for item in sector_data]
+        etf_values = [item['price_change_percent'] for item in sector_data]
+        constituent_values = [item['constituent_change_avg'] for item in sector_data]
+        
+        # ETFパフォーマンス
+        colors1 = ['green' if x >= 0 else 'red' for x in etf_values]
+        bars1 = ax1.barh(sectors, etf_values, color=colors1)
+        ax1.set_xlabel('ETF Price Change (%)')
+        ax1.set_title('Sector ETF Performance')
+        ax1.invert_yaxis()
+        
+        # 構成銘柄平均パフォーマンス
+        colors2 = ['green' if x >= 0 else 'red' for x in constituent_values]
+        bars2 = ax2.barh(sectors, constituent_values, color=colors2)
+        ax2.set_xlabel('Constituent Average Change (%)')
+        ax2.set_title('Sector Constituent Performance')
+        ax2.invert_yaxis()
+        
+        # 値ラベルを追加
+        for bar, value in zip(bars1, etf_values):
+            ax1.text(bar.get_width() + (max(etf_values) * 0.01), bar.get_y() + bar.get_height()/2, 
+                    f'{value:.1f}', va='center')
+        
+        for bar, value in zip(bars2, constituent_values):
+            ax2.text(bar.get_width() + (max(constituent_values) * 0.01), bar.get_y() + bar.get_height()/2, 
+                    f'{value:.1f}', va='center')
+        
+        plt.tight_layout()
+        
+        # 画像をBase64エンコード
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+        plt.close()
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        
+        return img_base64
+        
+    except Exception as e:
+        return None

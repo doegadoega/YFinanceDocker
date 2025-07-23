@@ -130,6 +130,48 @@ Resources:
             RestApiId: !Ref YFinanceApi
             Path: /chart
             Method: get
+        GetRankingsStocks:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /rankings/stocks
+            Method: get
+        GetRankingsSectors:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /rankings/sectors
+            Method: get
+        GetRankingsCrypto:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /rankings/crypto
+            Method: get
+        GetMarketsIndices:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /markets/indices
+            Method: get
+        GetMarketsCurrencies:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /markets/currencies
+            Method: get
+        GetMarketsCommodities:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /markets/commodities
+            Method: get
+        GetMarketsStatus:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /markets/status
+            Method: get
     Metadata:
       Dockerfile: Dockerfile
       DockerContext: .
