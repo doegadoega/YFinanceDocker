@@ -1,27 +1,27 @@
-version: '3'
-
 services:
-  # ローカルテスト用サービス
+  # Lambda シミュレーター用サービス
+  yfinance-lambda-sim:
+    image: public.ecr.aws/sam/build-python3.12
+    environment:
+      - EXECUTION_MODE=DOCKER
+    volumes:
+      - .:/var/task
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /var/task
+    command: ["sam", "local", "start-api", "--host", "0.0.0.0", "--port", "3000"]
+    ports:
+      - "3000:3000"
+  
+  # 直接テスト用サービス（Lambda環境）
   yfinance-local:
     build:
       context: .
-      dockerfile: Dockerfile.local
     environment:
       - EXECUTION_MODE=DOCKER
       - YFINANCE_API_URL=https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod
     volumes:
-      - .:/app
-    # 以下のコマンドをコメントアウトから外して使用することもできます
-    # command: python yfinance_cli.py --help
-    # command: python yfinance_cli.py AAPL --price --info
-    # command: python yfinance_search.py Apple
-    # command: python local_test.py
-
-  # Lambda用サービス（デプロイ用）
-  yfinance-lambda:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      - EXECUTION_MODE=LAMBDA
-      - YFINANCE_API_URL=https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod 
+      - .:/var/task
+    entrypoint: [""]
+    command: ["python", "test_all_endpoints_direct.py"]
+    ports:
+      - "8000:8000"
