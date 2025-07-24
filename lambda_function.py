@@ -1,6 +1,6 @@
 import json
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, date
 import traceback
 import os
 import pandas as pd
@@ -145,10 +145,21 @@ def get_market_sentiment(avg_change):
 
 def serialize_for_json(obj):
     """オブジェクトをJSON serializable に変換"""
-    if pd.isna(obj) or obj is None:
+    if obj is None:
         return None
-    elif isinstance(obj, (pd.Timestamp, datetime)):
+    
+    # pd.isna()はスカラー値に対してのみ使用
+    try:
+        if pd.isna(obj):
+            return None
+    except (ValueError, TypeError):
+        # リストやnumpy配列などでpd.isna()が使えない場合は無視
+        pass
+    
+    if isinstance(obj, (pd.Timestamp, datetime)):
         return obj.strftime('%Y-%m-%d') if hasattr(obj, 'strftime') else str(obj)
+    elif isinstance(obj, date):
+        return obj.strftime('%Y-%m-%d')
     elif isinstance(obj, (np.integer, np.int64)):
         return int(obj)
     elif isinstance(obj, (np.floating, np.float64)):
@@ -166,28 +177,84 @@ def serialize_for_json(obj):
 
 def safe_dataframe_to_dict(df):
     """DataFrameを安全にdictに変換（JSON serializable）"""
-    if df.empty:
-        return {}
     try:
-        # インデックスを文字列に変換してから辞書化
-        df_copy = df.copy()
-        if hasattr(df_copy.index, 'strftime'):
-            df_copy.index = df_copy.index.strftime('%Y-%m-%d')
-        else:
-            df_copy.index = df_copy.index.astype(str)
+        # Noneや文字列エラーの場合
+        if df is None or isinstance(df, str):
+            return {} if df is None else df
         
-        result = df_copy.to_dict()
-        return serialize_for_json(result)
+        # 既に辞書の場合
+        if isinstance(df, dict):
+            return serialize_for_json(df)
+        
+        # リストの場合
+        if isinstance(df, list):
+            return serialize_for_json(df)
+        
+        # numpy arrayの場合
+        if hasattr(df, 'ndim') and hasattr(df, 'tolist'):
+            try:
+                return serialize_for_json(df.tolist())
+            except:
+                return {}
+        
+        # DataFrameの場合
+        if hasattr(df, 'to_dict') and hasattr(df, 'index'):
+            try:
+                # DataFrameをdictに変換
+                result = df.to_dict(orient='index')
+                return serialize_for_json(result)
+            except Exception as inner_e:
+                # DataFrame処理に失敗した場合はrecords形式で試行
+                try:
+                    result = df.to_dict('records')
+                    return serialize_for_json(result)
+                except:
+                    return f"DataFrame変換エラー: {str(inner_e)}"
+        
+        # その他の場合は空の辞書
+        return {}
+        
     except Exception as e:
         return f"DataFrame変換エラー: {str(e)}"
 
 def safe_dataframe_to_records(df):
     """DataFrameを安全にrecordsに変換（JSON serializable）"""
-    if df.empty:
-        return []
     try:
-        records = df.to_dict('records')
-        return serialize_for_json(records)
+        # Noneや文字列エラーをそのまま返す
+        if df is None or isinstance(df, str):
+            return [] if df is None else df
+        
+        # 既にリストや辞書の場合
+        if isinstance(df, (list, dict)):
+            return serialize_for_json(df)
+        
+        # numpy arrayの場合
+        if hasattr(df, 'ndim') and hasattr(df, 'tolist'):
+            try:
+                return serialize_for_json(df.tolist())
+            except:
+                return []
+        
+        # DataFrameの場合
+        if hasattr(df, 'to_dict') and hasattr(df, 'index'):
+            try:
+                # DataFrameをrecordsに変換
+                records = df.to_dict('records')
+                return serialize_for_json(records)
+            except Exception as inner_e:
+                # records変換に失敗した場合はlist形式で試行
+                try:
+                    if hasattr(df, 'values'):
+                        result = df.values.tolist()
+                        return serialize_for_json(result)
+                    else:
+                        return []
+                except:
+                    return f"DataFrame変換エラー: {str(inner_e)}"
+        
+        # その他の場合
+        return []
+        
     except Exception as e:
         return f"Records変換エラー: {str(e)}"
 
@@ -888,8 +955,8 @@ def get_stock_basic_info_api(ticker):
         
         # 詳細情報
         try:
-            info = stock.get_info()
-            if not info or info.empty:
+            info = stock.info
+            if not info:
                 info = {}
                 info_error = "詳細情報が取得できませんでした"
             else:
@@ -900,7 +967,7 @@ def get_stock_basic_info_api(ticker):
 
         # 高速基本情報
         try:
-            fast_info = stock.get_fast_info()
+            fast_info = stock.fast_info
             if hasattr(fast_info, '__dict__'):
                 fast_info_dict = {}
                 for key in dir(fast_info):
@@ -917,24 +984,56 @@ def get_stock_basic_info_api(ticker):
         except Exception as e:
             fast_info = {}
 
-        # ロゴURL
+        # ロゴURL (Clearbit使用)
         logo_url = None
         try:
-            logo_url = info.get('logo_url') if info else None
-            if not logo_url:
-                website = info.get('website') if info else None
+            if info:
+                # websiteからClearbitロゴURLを生成
+                website = (info.get('website') or 
+                          info.get('webSite') or 
+                          info.get('companyWebsite'))
+                
                 if website:
                     import re
-                    m = re.search(r'https?://([^/]+)', website)
+                    # ドメイン名を抽出
+                    m = re.search(r'https?://(?:www\.)?([^/]+)', website)
                     if m:
-                        logo_url = f"https://logo.clearbit.com/{m.group(1)}"
+                        domain = m.group(1)
+                        logo_url = f"https://logo.clearbit.com/{domain}"
+                
+                # websiteがない場合は主要企業を直接指定
+                if not logo_url:
+                    known_logos = {
+                        'AAPL': 'https://logo.clearbit.com/apple.com',
+                        'MSFT': 'https://logo.clearbit.com/microsoft.com',
+                        'GOOGL': 'https://logo.clearbit.com/google.com',
+                        'AMZN': 'https://logo.clearbit.com/amazon.com',
+                        'TSLA': 'https://logo.clearbit.com/tesla.com',
+                        'META': 'https://logo.clearbit.com/meta.com',
+                        'NVDA': 'https://logo.clearbit.com/nvidia.com',
+                        'JPM': 'https://logo.clearbit.com/jpmorganchase.com',
+                        'V': 'https://logo.clearbit.com/visa.com',
+                        'JNJ': 'https://logo.clearbit.com/jnj.com',
+                        'WMT': 'https://logo.clearbit.com/walmart.com',
+                        'PG': 'https://logo.clearbit.com/pg.com',
+                        'UNH': 'https://logo.clearbit.com/unitedhealthgroup.com',
+                        'HD': 'https://logo.clearbit.com/homedepot.com',
+                        'BAC': 'https://logo.clearbit.com/bankofamerica.com',
+                        'MA': 'https://logo.clearbit.com/mastercard.com',
+                        'DIS': 'https://logo.clearbit.com/disney.com',
+                        'ADBE': 'https://logo.clearbit.com/adobe.com',
+                        'CRM': 'https://logo.clearbit.com/salesforce.com',
+                        'NFLX': 'https://logo.clearbit.com/netflix.com'
+                    }
+                    if ticker.upper() in known_logos:
+                        logo_url = known_logos[ticker.upper()]
         except Exception as e:
             logo_url = None
 
         # ISIN
         isin = None
         try:
-            isin = stock.get_isin()
+            isin = stock.isin
         except Exception as e:
             isin = {'error': f'ISIN取得エラー: {str(e)}'}
 
@@ -959,12 +1058,12 @@ def get_stock_price_api(ticker):
         
         # 詳細情報と高速情報を取得
         try:
-            info = stock.get_info()
+            info = stock.info
         except:
             info = {}
         
         try:
-            fast_info = stock.get_fast_info()
+            fast_info = stock.fast_info
             if hasattr(fast_info, '__dict__'):
                 fast_info_dict = {}
                 for key in dir(fast_info):
@@ -1058,22 +1157,22 @@ def get_stock_financials_api(ticker):
         financials = {}
         try:
             # 損益計算書
-            income_stmt = stock.get_income_stmt()
-            if not income_stmt.empty:
+            income_stmt = stock.income_stmt
+            if income_stmt is not None and hasattr(income_stmt, 'empty') and not income_stmt.empty:
                 income_stmt_data = safe_dataframe_to_dict(income_stmt)
             else:
                 income_stmt_data = {}
             
             # 貸借対照表
-            balance_sheet = stock.get_balance_sheet()
-            if not balance_sheet.empty:
+            balance_sheet = stock.balance_sheet
+            if balance_sheet is not None and hasattr(balance_sheet, 'empty') and not balance_sheet.empty:
                 balance_sheet_data = safe_dataframe_to_dict(balance_sheet)
             else:
                 balance_sheet_data = {}
             
             # キャッシュフロー
-            cashflow = stock.get_cashflow()
-            if not cashflow.empty:
+            cashflow = stock.cashflow
+            if cashflow is not None and hasattr(cashflow, 'empty') and not cashflow.empty:
                 cashflow_data = safe_dataframe_to_dict(cashflow)
             else:
                 cashflow_data = {}
@@ -1089,7 +1188,7 @@ def get_stock_financials_api(ticker):
         # 決算情報
         earnings = {}
         try:
-            info = stock.get_info()
+            info = stock.info
             if info:
                 earnings_keys = ['trailingEps', 'forwardEps', 'trailingPE', 'forwardPE', 'pegRatio']
                 for key in earnings_keys:
@@ -1117,7 +1216,7 @@ def get_stock_analysts_api(ticker):
         # アナリスト予想
         analysts = {}
         try:
-            info = stock.get_info()
+            info = stock.info
             if info:
                 if 'recommendationMean' in info:
                     analysts['recommendation_mean'] = info['recommendationMean']
@@ -1181,25 +1280,13 @@ def get_stock_holders_api(ticker):
         holders_data = {}
         try:
             # 大株主
-            major_holders = stock.get_major_holders()
-            if not major_holders.empty:
-                major_holders_data = safe_dataframe_to_records(major_holders)
-            else:
-                major_holders_data = []
+            major_holders_data = safe_dataframe_to_records(stock.major_holders)
                 
             # 機関投資家
-            institutional_holders = stock.get_institutional_holders()
-            if not institutional_holders.empty:
-                institutional_holders_data = safe_dataframe_to_records(institutional_holders)
-            else:
-                institutional_holders_data = []
+            institutional_holders_data = safe_dataframe_to_records(stock.institutional_holders)
                 
             # 投資信託
-            mutualfund_holders = stock.get_mutualfund_holders()
-            if not mutualfund_holders.empty:
-                mutualfund_holders_data = safe_dataframe_to_records(mutualfund_holders)
-            else:
-                mutualfund_holders_data = []
+            mutualfund_holders_data = safe_dataframe_to_records(stock.mutualfund_holders)
                 
             holders_data = {
                 'major_holders': major_holders_data,
@@ -1212,9 +1299,7 @@ def get_stock_holders_api(ticker):
         # 株式数詳細
         shares_data = {}
         try:
-            shares = stock.get_shares()
-            if not shares.empty:
-                shares_data = safe_dataframe_to_dict(shares)
+            shares_data = safe_dataframe_to_dict(stock.shares)
         except Exception as e:
             shares_data = {'error': f'株式数取得エラー: {str(e)}'}
 
@@ -1237,8 +1322,8 @@ def get_stock_events_api(ticker):
         # カレンダー（決算日など）
         calendar_data = []
         try:
-            calendar = stock.get_calendar()
-            if not calendar.empty:
+            calendar = stock.calendar
+            if calendar is not None:
                 calendar_data = safe_dataframe_to_records(calendar)
         except Exception as e:
             calendar_data = {'error': f'カレンダー取得エラー: {str(e)}'}
@@ -1246,8 +1331,8 @@ def get_stock_events_api(ticker):
         # 決算日
         earnings_dates_data = []
         try:
-            earnings_dates = stock.get_earnings_dates()
-            if not earnings_dates.empty:
+            earnings_dates = stock.earnings_dates
+            if earnings_dates is not None:
                 earnings_dates_data = safe_dataframe_to_records(earnings_dates)
         except Exception as e:
             earnings_dates_data = {'error': f'決算日取得エラー: {str(e)}'}
@@ -1255,10 +1340,15 @@ def get_stock_events_api(ticker):
         # 配当
         dividends = []
         try:
-            dividends_series = stock.get_dividends()
-            if not dividends_series.empty:
+            dividends_series = stock.dividends
+            if dividends_series is not None and hasattr(dividends_series, 'empty') and not dividends_series.empty:
                 dividends = [{
                     'date': idx.strftime('%Y-%m-%d'),
+                    'amount': float(val)
+                } for idx, val in dividends_series.items()]
+            elif dividends_series is not None and hasattr(dividends_series, 'items'):
+                dividends = [{
+                    'date': idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx),
                     'amount': float(val)
                 } for idx, val in dividends_series.items()]
         except Exception as e:
@@ -1267,10 +1357,15 @@ def get_stock_events_api(ticker):
         # 株式分割
         splits = []
         try:
-            splits_series = stock.get_splits()
-            if not splits_series.empty:
+            splits_series = stock.splits
+            if splits_series is not None and hasattr(splits_series, 'empty') and not splits_series.empty:
                 splits = [{
                     'date': idx.strftime('%Y-%m-%d'),
+                    'ratio': float(val)
+                } for idx, val in splits_series.items()]
+            elif splits_series is not None and hasattr(splits_series, 'items'):
+                splits = [{
+                    'date': idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx),
                     'ratio': float(val)
                 } for idx, val in splits_series.items()]
         except Exception as e:
@@ -1298,10 +1393,13 @@ def get_stock_news_api(ticker):
         news = []
         try:
             news_data = stock.get_news()
-            if news_data and not news_data.empty:
-                news = safe_dataframe_to_records(news_data)
-            elif isinstance(news_data, list):
+            if isinstance(news_data, list):
                 news = news_data
+            elif hasattr(news_data, 'empty') and not news_data.empty:
+                news = safe_dataframe_to_records(news_data)
+            elif news_data:
+                # その他のデータ型の場合
+                news = news_data if isinstance(news_data, list) else []
         except Exception as e:
             news = {'error': f'ニュース取得エラー: {str(e)}'}
 
@@ -1328,20 +1426,20 @@ def get_stock_options_api(ticker):
                 expiry = options_dates[0]
                 chain = stock.option_chain(expiry)
                 calls_data = [{
-                    'strike': float(r['strike']),
-                    'last_price': float(r['lastPrice']),
-                    'bid': float(r['bid']),
-                    'ask': float(r['ask']),
-                    'volume': int(r['volume']),
-                    'open_interest': int(r['openInterest'])
+                    'strike': float(r['strike']) if not pd.isna(r['strike']) else 0.0,
+                    'last_price': float(r['lastPrice']) if not pd.isna(r['lastPrice']) else 0.0,
+                    'bid': float(r['bid']) if not pd.isna(r['bid']) else 0.0,
+                    'ask': float(r['ask']) if not pd.isna(r['ask']) else 0.0,
+                    'volume': int(r['volume']) if not pd.isna(r['volume']) else 0,
+                    'open_interest': int(r['openInterest']) if not pd.isna(r['openInterest']) else 0
                 } for _, r in chain.calls.iterrows()]
                 puts_data = [{
-                    'strike': float(r['strike']),
-                    'last_price': float(r['lastPrice']),
-                    'bid': float(r['bid']),
-                    'ask': float(r['ask']),
-                    'volume': int(r['volume']),
-                    'open_interest': int(r['openInterest'])
+                    'strike': float(r['strike']) if not pd.isna(r['strike']) else 0.0,
+                    'last_price': float(r['lastPrice']) if not pd.isna(r['lastPrice']) else 0.0,
+                    'bid': float(r['bid']) if not pd.isna(r['bid']) else 0.0,
+                    'ask': float(r['ask']) if not pd.isna(r['ask']) else 0.0,
+                    'volume': int(r['volume']) if not pd.isna(r['volume']) else 0,
+                    'open_interest': int(r['openInterest']) if not pd.isna(r['openInterest']) else 0
                 } for _, r in chain.puts.iterrows()]
                 options_data = {'expiry_date': expiry, 'calls': calls_data, 'puts': puts_data}
         except Exception as e:
@@ -1403,8 +1501,8 @@ def get_stock_home_api():
             for symbol, name in index_symbols.items():
                 try:
                     stock = yf.Ticker(symbol)
-                    info = stock.get_info()
-                    fast_info = stock.get_fast_info()
+                    info = stock.info
+                    fast_info = stock.fast_info
                     
                     # 価格情報
                     current_price = None
@@ -1463,8 +1561,8 @@ def get_stock_home_api():
             for symbol, info in sector_etfs.items():
                 try:
                     stock = yf.Ticker(symbol)
-                    stock_info = stock.get_info()
-                    fast_info = stock.get_fast_info()
+                    stock_info = stock.info
+                    fast_info = stock.fast_info
                     
                     # 価格情報
                     current_price = None

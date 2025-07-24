@@ -200,3 +200,44 @@ docker-compose build --no-cache
 ```bash
 docker run --rm -it yfinance /bin/bash
 ``` 
+
+# Docker運用コマンド例
+
+## ローカルAPIテスト自動化スクリプト
+
+```sh
+docker-compose build yfinance-local
+
+docker-compose up -d yfinance-local
+
+# サーバー起動待ち（数秒）
+sleep 5
+
+# テスト結果保存ディレクトリ
+testdir="./test/$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$testdir"
+
+# テストしたいエンドポイント一覧
+declare -A endpoints=(
+  [basic]="/ticker/basic?ticker=AAPL"
+  [price]="/ticker/price?ticker=AAPL"
+  [news]="/news/rss?limit=5"
+  [rankings]="/rankings/stocks?type=gainers&market=sp500&limit=5"
+  # 必要に応じて追加
+)
+
+for name in "${!endpoints[@]}"; do
+  url="http://localhost:8000${endpoints[$name]}"
+  echo "Testing $url"
+  curl -s "$url" > "$testdir/${name}.json"
+done
+
+echo "テスト結果は $testdir に保存されました"
+
+docker-compose down
+```
+
+## 注意点
+- APIサーバーが8000番ポートで起動している必要あり（docker-compose.ymlでports: - "8000:8000" を有効化）
+- 必要なエンドポイントは適宜追加・修正してください
+- テスト結果は ./test/日付_時刻/ フォルダに保存されます 

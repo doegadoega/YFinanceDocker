@@ -398,7 +398,7 @@ def main():
     commodities_parser = subparsers.add_parser('commodities', help='商品価格を取得')
     
     status_parser = subparsers.add_parser('status', help='市場開閉状況を取得')
-
+    
     args = parser.parse_args()
     
     # JSON出力モードの場合はヘッダーを表示しない
@@ -655,7 +655,7 @@ def main():
                 print(json.dumps(data, indent=2, ensure_ascii=False))
             else:
                 display_comprehensive_info_api(data)
-
+    
     else:
         parser.print_help()
         return
