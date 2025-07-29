@@ -28,6 +28,8 @@ Resources:
       PackageType: Image
       MemorySize: 1024
       Timeout: 30
+      Architectures:
+        - x86_64
       Environment:
         Variables:
           # 環境変数は後で動的に設定されるため、ここでは空にする
