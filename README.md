@@ -47,11 +47,16 @@ YFinanceを使用した**完全統一された株式データ取得システム*
 - **効率的なデータ取得**: 必要な情報のみを取得してレスポンス時間を短縮
 - **重複排除**: 各要素専用関数を統合版で再利用
 
-### 🏠 マーケット概要機能
-- **ホーム画面API** (`/home`): 株価指数、主要ETF、セクター情報を一括取得
-- **ニュースRSS API** (`/news/rss`): 金融ニュースの一括取得
-- **ランキングAPI**: 株価、セクター、暗号通貨のリアルタイムランキング
-- **マーケットAPI**: 指数、為替、商品、市場開閉状況
+### 🏠 統合マーケット概要機能
+- **統合ホーム画面API** (`/home`): **7つのエンドポイントを統合**
+  - 📰 金融ニュース（news/rss）
+  - 📈 株価ランキング（rankings/stocks）
+  - 🏢 セクターランキング（rankings/sectors）
+  - 📊 主要指数（markets/indices）
+  - 💱 為替レート（markets/currencies）
+  - 🛢️ 商品価格（markets/commodities）
+  - 🌍 市場開閉状況（markets/status）
+- **ワンストップAPI**: 1回のリクエストで包括的なマーケット情報を取得
 
 ### 🔍 高速な株式検索機能
 - 複数地域対応（US, JP, DE, CA, AU, GB, FR, IT, ES, KR, IN, HK, SG）
@@ -250,14 +255,25 @@ YFinanceDocker/
 | `/ticker/options` | オプション情報 | `GET /ticker/options?ticker=AAPL` |
 | `/ticker/sustainability` | ESG情報 | `GET /ticker/sustainability?ticker=AAPL` |
 
-### 4. 🏠 マーケット概要 API
+### 4. 🏠 統合マーケット概要 API（✨NEW!）
+
+| エンドポイント | 説明 | 統合された機能 |
+|---------------|------|-------------|
+| `/home` | **統合ホーム画面** | 📰 ニュース + 📈 株価ランキング + 🏢 セクター + 📊 指数 + 💱 為替 + 🛢️ 商品 + 🌍 市場状況 |
+
+**特徴**: 7つのエンドポイントを1つに統合！ワンストップでマーケット全体を把握
+
+### 5. 📰 ニュース API
 
 | エンドポイント | 説明 | 例 |
 |---------------|------|---|
-| `/home` | ホーム画面情報 | `GET /home` |
 | `/news/rss` | 金融ニュースRSS | `GET /news/rss?limit=10` |
 
-### 5. 📈 ランキング API
+**📰 ニュースソース:**
+- **Yahoo Finance RSS**: `https://finance.yahoo.com/rss/2.0` (一般金融ニュース)
+- **MarketWatch Top Stories**: `https://www.marketwatch.com/rss/topstories` (市場ニュース・画像付き)
+
+### 6. 📈 ランキング API
 
 | エンドポイント | 説明 | 例 |
 |---------------|------|---|
@@ -265,7 +281,7 @@ YFinanceDocker/
 | `/rankings/sectors` | セクターランキング | `GET /rankings/sectors?limit=10` |
 | `/rankings/crypto` | 暗号通貨ランキング | `GET /rankings/crypto?sort=change&limit=10` |
 
-### 6. 🌍 マーケット情報 API
+### 7. 🌍 マーケット情報 API
 
 | エンドポイント | 説明 | 例 |
 |---------------|------|---|
@@ -300,6 +316,62 @@ YFinanceDocker/
     "timestamp": "2025-07-24T14:49:56",
     "server": "lambda"
   }
+}
+```
+
+### 🏠 統合ホーム画面情報（✨NEW!）
+```json
+{
+  "news_rss": {
+    "status": "success",
+    "data": [
+      {
+        "title": "S&P 500 scores 5th straight record high",
+        "summary": "Wall Street's so-called fear gauge dropped...",
+        "url": "https://www.marketwatch.com/story/...",
+        "source": "MarketWatch Top Stories",
+        "image_url": "https://images.mktw.net/im-28297331",
+        "published_at": "2025-07-25T22:34:00"
+      }
+    ],
+    "metadata": {
+      "total_sources": 2,
+      "sources_used": ["Yahoo Finance", "MarketWatch Top Stories"]
+    }
+  },
+  "rankings_stocks": {
+    "gainers": {
+      "status": "success",
+      "data": [
+        {
+          "symbol": "NVDA",
+          "name": "NVIDIA Corporation",
+          "current_price": 850.25,
+          "price_change_percent": 3.68
+        }
+      ]
+    },
+    "losers": { ... }
+  },
+  "markets_indices": {
+    "status": "success",
+    "data": [
+      {
+        "index": "S&P 500",
+        "symbol": "^GSPC",
+        "current_price": 5892.35,
+        "price_change_percent": 0.26
+      }
+    ]
+  },
+  "markets_currencies": { ... },
+  "markets_commodities": { ... },
+  "markets_status": { ... },
+  "endpoints_integrated": [
+    "news/rss", "rankings/stocks", "rankings/sectors",
+    "markets/indices", "markets/currencies", 
+    "markets/commodities", "markets/status"
+  ]
 }
 ```
 
@@ -469,6 +541,8 @@ YFinanceDocker/
 - **CloudFormation**: インフラストラクチャ管理
 - **Matplotlib**: チャート生成
 - **Feedparser**: RSSニュース取得
+  - Yahoo Finance RSS (https://finance.yahoo.com/rss/2.0)
+  - MarketWatch RSS (https://www.marketwatch.com/rss/topstories)
 
 ## 📝 ライセンス
 

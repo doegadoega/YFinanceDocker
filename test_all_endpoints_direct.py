@@ -68,6 +68,98 @@ def test_function(name, func, save_dir):
         print(f"✗ EXCEPTION: {e}")
         return False, f"exception: {e}"
 
+def test_enhanced_home_features(save_dir):
+    """拡張されたホーム機能の詳細テスト"""
+    print(f"Testing: enhanced_home    ... ", end="", flush=True)
+    
+    try:
+        # 拡張されたホーム情報取得
+        home_data = get_stock_home_api()
+        
+        if not home_data or home_data.get("error"):
+            print(f"✗ FAILED (Home API Error: {home_data.get('error', 'Unknown error')})")
+            return False, "home_api_error"
+        
+        # 拡張機能の存在確認
+        enhanced_features = home_data.get('enhanced_features', [])
+        expected_features = [
+            'news_rss_integration',
+            'stock_rankings_integration', 
+            'sector_rankings_integration',
+            'major_indices_integration',
+            'currency_rates_integration',
+            'commodity_prices_integration',
+            'market_status_integration'
+        ]
+        
+        # 各セクションの詳細チェック
+        sections_report = {
+            'enhanced_features_count': len(enhanced_features),
+            'expected_features_count': len(expected_features),
+            'missing_features': [f for f in expected_features if f not in enhanced_features],
+            'sections_status': {}
+        }
+        
+        # 各セクションの状態をチェック
+        sections = {
+            'latest_news': home_data.get('latest_news', {}),
+            'stock_rankings': home_data.get('stock_rankings', {}),
+            'sector_rankings': home_data.get('sector_rankings', {}),
+            'major_indices': home_data.get('major_indices', {}),
+            'currency_rates': home_data.get('currency_rates', {}),
+            'commodity_prices': home_data.get('commodity_prices', {}),
+            'market_status': home_data.get('market_status', {})
+        }
+        
+        for section_name, section_data in sections.items():
+            if section_data.get('error'):
+                sections_report['sections_status'][section_name] = f"ERROR: {section_data['error']}"
+            elif not section_data:
+                sections_report['sections_status'][section_name] = "MISSING"
+            else:
+                # データ数をカウント
+                data_count = 0
+                if section_name == 'latest_news':
+                    data_count = section_data.get('count', 0)
+                elif section_name == 'stock_rankings':
+                    data_count = len(section_data.get('top_gainers', [])) + len(section_data.get('top_losers', []))
+                elif section_name == 'sector_rankings':
+                    data_count = len(section_data.get('top_sectors', []))
+                elif section_name == 'major_indices':
+                    data_count = len(section_data.get('indices', []))
+                elif section_name == 'currency_rates':
+                    data_count = len(section_data.get('major_pairs', []))
+                elif section_name == 'commodity_prices':
+                    data_count = len(section_data.get('commodities', []))
+                elif section_name == 'market_status':
+                    data_count = len(section_data.get('markets', []))
+                
+                sections_report['sections_status'][section_name] = f"OK ({data_count} items)"
+        
+        # 詳細レポートを作成
+        detailed_report = {
+            'original_home_data': home_data,
+            'enhanced_features_analysis': sections_report,
+            'test_timestamp': datetime.now().isoformat(),
+            'overall_status': 'SUCCESS' if not sections_report['missing_features'] else 'PARTIAL'
+        }
+        
+        # 結果保存
+        if save_result("enhanced_home_detailed", detailed_report, save_dir):
+            if sections_report['missing_features']:
+                print(f"⚠ PARTIAL (missing: {len(sections_report['missing_features'])} features)")
+                return True, f"partial_success: missing {sections_report['missing_features']}"
+            else:
+                print("✓ SUCCESS (all enhanced features working)")
+                return True, "full_success"
+        else:
+            print("✗ FAILED (Save Error)")
+            return False, "save_error"
+            
+    except Exception as e:
+        print(f"✗ EXCEPTION: {e}")
+        return False, f"exception: {e}"
+
 def main():
     """メイン関数"""
     print("=" * 60)
@@ -129,6 +221,16 @@ def main():
         else:
             failed += 1
     
+    # 🆕 拡張されたホーム機能の詳細テスト
+    print("\n--- 拡張機能詳細テスト ---")
+    enhanced_success, enhanced_message = test_enhanced_home_features(testdir)
+    results.append(("enhanced_home", enhanced_success, enhanced_message))
+    total += 1
+    if enhanced_success:
+        passed += 1
+    else:
+        failed += 1
+    
     # 結果サマリー
     print()
     print("=" * 60)
@@ -138,6 +240,16 @@ def main():
     print(f"✅ 成功: {passed}")
     print(f"❌ 失敗: {failed}")
     print(f"📈 成功率: {(passed/total*100):.1f}%")
+    print()
+    
+    # 拡張機能の特別レポート
+    if enhanced_success:
+        if "partial_success" in enhanced_message:
+            print("⚠️  拡張機能: 部分的成功 - 一部の機能に問題があります")
+        else:
+            print("🎉 拡張機能: 完全成功 - 全ての新機能が正常に動作しています！")
+    else:
+        print("❌拡張機能: 失敗 - 新機能に問題があります")
     print()
     
     # 失敗したテストの詳細
