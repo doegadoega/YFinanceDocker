@@ -1480,201 +1480,85 @@ def get_stock_sustainability_api(ticker):
         return {'error': f'ESG情報取得エラー: {str(e)}'}
 
 def get_stock_home_api():
-    """ホーム画面用情報取得API - 株価指数、主要ETF、セクター情報"""
+    """ホーム画面用情報取得API - 各エンドポイントの処理を統合"""
     try:
-        # 主要な株価指数
-        indices = {}
+        result = {}
+        
+        # 1. news/rss の処理
         try:
-            index_symbols = {
-                'SPY': 'S&P 500 ETF',
-                'QQQ': 'NASDAQ-100 ETF', 
-                'IWM': 'Russell 2000 ETF',
-                'DIA': 'Dow Jones ETF',
-                'VTI': 'Total Stock Market ETF',
-                'VEA': 'Developed Markets ETF',
-                'VWO': 'Emerging Markets ETF',
-                'BND': 'Total Bond Market ETF',
-                'GLD': 'Gold ETF',
-                'USO': 'Crude Oil ETF'
-            }
+            news_params = {'limit': '10', 'sort': 'published_desc'}
+            news_result = lamuda_get_rss_news_api(news_params)
+            result['news_rss'] = news_result
+        except Exception as e:
+            result['news_rss'] = {'error': f'ニュース取得エラー: {str(e)}'}
+        
+        # 2. rankings/stocks の処理
+        try:
+            rankings_params = {'type': 'gainers', 'limit': '10', 'market': 'sp500'}
+            gainers_result = get_stock_rankings_api(rankings_params)
             
-            for symbol, name in index_symbols.items():
-                try:
-                    stock = yf.Ticker(symbol)
-                    info = stock.info
-                    fast_info = stock.fast_info
-                    
-                    # 価格情報
-                    current_price = None
-                    previous_close = None
-                    price_change = None
-                    price_change_percent = None
-                    
-                    if hasattr(fast_info, 'last_price') and fast_info.last_price:
-                        current_price = float(fast_info.last_price)
-                    elif info and 'currentPrice' in info:
-                        current_price = float(info['currentPrice'])
-                    
-                    if hasattr(fast_info, 'previous_close') and fast_info.previous_close:
-                        previous_close = float(fast_info.previous_close)
-                    elif info and 'previousClose' in info:
-                        previous_close = float(info['previousClose'])
-                    
-                    if current_price and previous_close:
-                        price_change = current_price - previous_close
-                        price_change_percent = (price_change / previous_close) * 100
-                    
-                    indices[symbol] = {
-                        'name': name,
-                        'current_price': round(current_price, 2) if current_price else None,
-                        'previous_close': round(previous_close, 2) if previous_close else None,
-                        'price_change': round(price_change, 2) if price_change is not None else None,
-                        'price_change_percent': round(price_change_percent, 2) if price_change_percent is not None else None,
-                        'price_change_direction': get_price_change_direction(price_change),
-                        'currency': 'USD'
-                    }
-                except Exception as e:
-                    indices[symbol] = {
-                        'name': name,
-                        'error': f'データ取得エラー: {str(e)}'
-                    }
-        except Exception as e:
-            indices = {'error': f'指数情報取得エラー: {str(e)}'}
-
-        # セクター別ETF
-        sectors = {}
-        try:
-            sector_etfs = {
-                'XLK': {'name': 'Technology Select Sector ETF', 'sector': 'Technology'},
-                'XLF': {'name': 'Financial Select Sector ETF', 'sector': 'Financial'},
-                'XLE': {'name': 'Energy Select Sector ETF', 'sector': 'Energy'},
-                'XLV': {'name': 'Health Care Select Sector ETF', 'sector': 'Healthcare'},
-                'XLI': {'name': 'Industrial Select Sector ETF', 'sector': 'Industrial'},
-                'XLP': {'name': 'Consumer Staples Select Sector ETF', 'sector': 'Consumer Staples'},
-                'XLY': {'name': 'Consumer Discretionary Select Sector ETF', 'sector': 'Consumer Discretionary'},
-                'XLU': {'name': 'Utilities Select Sector ETF', 'sector': 'Utilities'},
-                'XLRE': {'name': 'Real Estate Select Sector ETF', 'sector': 'Real Estate'},
-                'XLB': {'name': 'Materials Select Sector ETF', 'sector': 'Materials'},
-                'XLC': {'name': 'Communication Services Select Sector ETF', 'sector': 'Communication Services'}
-            }
+            rankings_params = {'type': 'losers', 'limit': '10', 'market': 'sp500'}
+            losers_result = get_stock_rankings_api(rankings_params)
             
-            for symbol, info in sector_etfs.items():
-                try:
-                    stock = yf.Ticker(symbol)
-                    stock_info = stock.info
-                    fast_info = stock.fast_info
-                    
-                    # 価格情報
-                    current_price = None
-                    previous_close = None
-                    price_change = None
-                    price_change_percent = None
-                    
-                    if hasattr(fast_info, 'last_price') and fast_info.last_price:
-                        current_price = float(fast_info.last_price)
-                    elif stock_info and 'currentPrice' in stock_info:
-                        current_price = float(stock_info['currentPrice'])
-                    
-                    if hasattr(fast_info, 'previous_close') and fast_info.previous_close:
-                        previous_close = float(fast_info.previous_close)
-                    elif stock_info and 'previousClose' in stock_info:
-                        previous_close = float(stock_info['previousClose'])
-                    
-                    if current_price and previous_close:
-                        price_change = current_price - previous_close
-                        price_change_percent = (price_change / previous_close) * 100
-                    
-                    sectors[symbol] = {
-                        'name': info['name'],
-                        'sector': info['sector'],
-                        'current_price': round(current_price, 2) if current_price else None,
-                        'previous_close': round(previous_close, 2) if previous_close else None,
-                        'price_change': round(price_change, 2) if price_change is not None else None,
-                        'price_change_percent': round(price_change_percent, 2) if price_change_percent is not None else None,
-                        'price_change_direction': get_price_change_direction(price_change),
-                        'currency': 'USD'
-                    }
-                except Exception as e:
-                    sectors[symbol] = {
-                        'name': info['name'],
-                        'sector': info['sector'],
-                        'error': f'データ取得エラー: {str(e)}'
-                    }
+            result['rankings_stocks'] = {
+                'gainers': gainers_result,
+                'losers': losers_result
+            }
         except Exception as e:
-            sectors = {'error': f'セクター情報取得エラー: {str(e)}'}
-
-        # 市場概要（主要指数の集計）
-        market_summary = {}
+            result['rankings_stocks'] = {'error': f'株価ランキング取得エラー: {str(e)}'}
+        
+        # 3. rankings/sectors の処理
         try:
-            if indices and not indices.get('error'):
-                # 上昇・下降・変化なしのカウント
-                up_count = sum(1 for data in indices.values() if isinstance(data, dict) and data.get('price_change_direction') == 'up')
-                down_count = sum(1 for data in indices.values() if isinstance(data, dict) and data.get('price_change_direction') == 'down')
-                unchanged_count = sum(1 for data in indices.values() if isinstance(data, dict) and data.get('price_change_direction') == 'unchanged')
-                
-                # 平均変化率
-                changes = [data.get('price_change_percent', 0) for data in indices.values() 
-                          if isinstance(data, dict) and data.get('price_change_percent') is not None]
-                avg_change = sum(changes) / len(changes) if changes else 0
-                
-                market_summary = {
-                    'total_indices': len(indices),
-                    'up_count': up_count,
-                    'down_count': down_count,
-                    'unchanged_count': unchanged_count,
-                    'average_change_percent': round(avg_change, 2),
-                    'market_sentiment': get_market_sentiment(avg_change)
-                }
+            sector_rankings_params = {'limit': '10'}
+            sector_result = get_sector_rankings_api(sector_rankings_params)
+            result['rankings_sectors'] = sector_result
         except Exception as e:
-            market_summary = {'error': f'市場概要計算エラー: {str(e)}'}
-
-        # セクター概要
-        sector_summary = {}
+            result['rankings_sectors'] = {'error': f'セクターランキング取得エラー: {str(e)}'}
+        
+        # 4. markets/indices の処理
         try:
-            if sectors and not sectors.get('error'):
-                sector_performance = {}
-                for symbol, data in sectors.items():
-                    if isinstance(data, dict) and 'sector' in data and 'price_change_percent' in data:
-                        sector = data['sector']
-                        change = data.get('price_change_percent', 0)
-                        if sector not in sector_performance:
-                            sector_performance[sector] = []
-                        sector_performance[sector].append(change)
-                
-                # セクター別平均変化率
-                sector_avg = {}
-                for sector, changes in sector_performance.items():
-                    if changes:
-                        avg_change = sum(changes) / len(changes)
-                        sector_avg[sector] = round(avg_change, 2)
-                
-                # ベスト・ワーストセクター
-                if sector_avg:
-                    best_sector = max(sector_avg.items(), key=lambda x: x[1])
-                    worst_sector = min(sector_avg.items(), key=lambda x: x[1])
-                    
-                    sector_summary = {
-                        'sector_averages': sector_avg,
-                        'best_performing_sector': {
-                            'sector': best_sector[0],
-                            'change_percent': best_sector[1]
-                        },
-                        'worst_performing_sector': {
-                            'sector': worst_sector[0],
-                            'change_percent': worst_sector[1]
-                        }
-                    }
+            indices_params = {}
+            indices_result = get_markets_indices_api(indices_params)
+            result['markets_indices'] = indices_result
         except Exception as e:
-            sector_summary = {'error': f'セクター概要計算エラー: {str(e)}'}
-
-        result = {
-            'indices': indices,
-            'sectors': sectors,
-            'market_summary': market_summary,
-            'sector_summary': sector_summary,
-            'execution_info': get_execution_info('LAMBDA'),
-            'timestamp': datetime.now().isoformat()
-        }
+            result['markets_indices'] = {'error': f'主要指数取得エラー: {str(e)}'}
+        
+        # 5. markets/currencies の処理
+        try:
+            currency_params = {}
+            currency_result = get_markets_currencies_api(currency_params)
+            result['markets_currencies'] = currency_result
+        except Exception as e:
+            result['markets_currencies'] = {'error': f'為替レート取得エラー: {str(e)}'}
+        
+        # 6. markets/commodities の処理
+        try:
+            commodity_params = {}
+            commodity_result = get_markets_commodities_api(commodity_params)
+            result['markets_commodities'] = commodity_result
+        except Exception as e:
+            result['markets_commodities'] = {'error': f'商品価格取得エラー: {str(e)}'}
+        
+        # 7. markets/status の処理
+        try:
+            status_params = {}
+            status_result = get_markets_status_api(status_params)
+            result['markets_status'] = status_result
+        except Exception as e:
+            result['markets_status'] = {'error': f'市場状況取得エラー: {str(e)}'}
+        
+        # メタ情報
+        result['execution_info'] = get_execution_info('LAMBDA')
+        result['timestamp'] = datetime.now().isoformat()
+        result['endpoints_integrated'] = [
+            'news/rss',
+            'rankings/stocks', 
+            'rankings/sectors',
+            'markets/indices',
+            'markets/currencies',
+            'markets/commodities',
+            'markets/status'
+        ]
         
         return result
         
