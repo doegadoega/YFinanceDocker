@@ -2,7 +2,7 @@ yfinance>=0.2.0
 pandas>=2.0.0
 numpy>=1.24.0
 matplotlib>=3.7.0
-mplfinance>=0.12.10b0   # Python-3.12 対応の最新版
+mplfinance==0.12.8b9   # Python-3.12 互換性のある最新版
 pillow>=10.0.0          # 画像処理に必要
 requests>=2.31.0
 PyYAML>=6.0.1
