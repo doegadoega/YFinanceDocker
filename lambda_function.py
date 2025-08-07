@@ -2819,27 +2819,26 @@ def get_stock_chart_api(ticker, period='1mo', size='800x400', chart_type='line')
         if hist.empty:
             return None, f'履歴データが取得できませんでした: {ticker}'
 
-        plt.figure(figsize=(width/100, height/100))
-
         if chart_type == 'candle' and 'Open' in hist.columns:
-            # ローソク足（簡易）
+            # ローソク足（新しいmplfinance API使用）
             try:
-                from mplfinance.original_flavor import candlestick_ohlc
-                import matplotlib.dates as mdates
-                ohlc = hist[['Open', 'High', 'Low', 'Close']].copy()
-                ohlc.reset_index(inplace=True)
-                ohlc['Date'] = ohlc['Date'].map(mdates.date2num)
-                ax = plt.gca()
-                candlestick_ohlc(ax, ohlc.values, width=0.6, colorup='g', colordown='r')
-                ax.xaxis_date()
-                plt.title(f'{ticker} {period} candlestick')
+                import mplfinance as mpf
+                buf = BytesIO()
+                mpf.plot(hist, type='candle', style='charles', 
+                        figsize=(width/100, height/100),
+                        title=f'{ticker} {period} candlestick',
+                        savefig=dict(fname=buf, format='png', dpi=100))
+                buf.seek(0)
+                img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+                return img_base64, None
             except Exception:
-                plt.plot(hist.index, hist['Close'], label='Close')
-        else:
-            # 折れ線
-            plt.plot(hist.index, hist['Close'], label='Close')
-            plt.title(f'{ticker} {period} close price')
-
+                # フォールバック: 折れ線グラフ
+                pass
+        
+        # 折れ線グラフ（デフォルトまたはフォールバック）
+        plt.figure(figsize=(width/100, height/100))
+        plt.plot(hist.index, hist['Close'], label='Close')
+        plt.title(f'{ticker} {period} close price')
         plt.xlabel('Date')
         plt.ylabel('Price')
         plt.legend()
