@@ -61,16 +61,12 @@ Resources:
             RestApiId: !Ref YFinanceApi
             Path: /auth/register
             Method: post
-            Auth:
-              Authorizer: NONE
         AuthLogin:
           Type: Api
           Properties:
             RestApiId: !Ref YFinanceApi
             Path: /auth/login
             Method: post
-            Auth:
-              Authorizer: NONE
         # 認証必須エンドポイント
         GetUserMe:
           Type: Api
@@ -276,3 +272,9 @@ Outputs:
     Value: !Ref YFinanceFunction
     Export:
       Name: YFinanceFunctionName
+
+  AuthAuthorizerFunctionName:
+    Description: 'AuthAuthorizer Lambda Function Name'
+    Value: !Ref AuthAuthorizer
+    Export:
+      Name: AuthAuthorizerFunctionName

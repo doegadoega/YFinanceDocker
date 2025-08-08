@@ -86,6 +86,9 @@ def lambda_handler(event, context):  # noqa: D401
     token = None
     if isinstance(event, dict):
         token = event.get("authorizationToken")
+        # TOKENタイプでは authorizationToken に "Bearer ..." がそのまま入るケースがある
+        if token and token.lower().startswith("bearer "):
+            token = token.split(" ", 1)[1].strip()
         if not token:
             # REQUEST type: check headers
             headers = event.get("headers") or {}
