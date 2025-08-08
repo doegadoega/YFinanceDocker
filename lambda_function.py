@@ -114,6 +114,7 @@ def handle_auth_register(event: Dict[str, Any]) -> Dict[str, Any]:
     email = (data.get('email') or '').strip().lower()
     password = data.get('password') or ''
     name = (data.get('name') or '').strip()
+    profile_in = data.get('profile') if isinstance(data.get('profile'), dict) else {}
     if not email or not password:
         return {'error': 'emailとpasswordは必須です'}
     table = _get_users_table()
@@ -129,7 +130,7 @@ def handle_auth_register(event: Dict[str, Any]) -> Dict[str, Any]:
             'name': name,
             'created_at': datetime.utcnow().isoformat(),
             'updated_at': datetime.utcnow().isoformat(),
-            'profile': {},
+            'profile': profile_in,
         }
         table.put_item(Item=item, ConditionExpression='attribute_not_exists(email)')
         return {'status': 'ok'}
@@ -154,7 +155,7 @@ def handle_auth_login(event: Dict[str, Any]) -> Dict[str, Any]:
         secret = os.environ.get('JWT_SECRET', '')
         if not secret:
             return {'error': 'サーバー設定エラー（JWT_SECRET未設定）'}
-        token = _jwt_sign({'sub': email}, secret, expires_in_seconds=3600)
+        token = _jwt_sign({'sub': email, 'email': email}, secret, expires_in_seconds=3600)
         return {'token': token, 'token_type': 'Bearer', 'expires_in': 3600}
     except Exception as e:
         return {'error': str(e)}
@@ -213,8 +214,12 @@ def handle_user_me_put(event: Dict[str, Any]) -> Dict[str, Any]:
             expr_vals[':n'] = name
             expr_names['#n'] = 'name'
         if profile_updates is not None:
+            # 既存profileにマージ（上書き）
+            # DynamoDBのUpdateExpressionだけでネストマージは難しいため、まず現状を取得してマージしてから全体をSET
+            cur = table.get_item(Key={'email': email}).get('Item') or {}
+            merged_profile = {**(cur.get('profile') or {}), **profile_updates}
             update_expr.append('#p = :p')
-            expr_vals[':p'] = profile_updates
+            expr_vals[':p'] = merged_profile
             expr_names['#p'] = 'profile'
         update_expr.append('updated_at = :u')
         update_str = 'SET ' + ', '.join(update_expr)

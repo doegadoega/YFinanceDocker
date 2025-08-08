@@ -25,6 +25,8 @@ Resources:
         Authorizers:
           UserJwtAuthorizer:
             FunctionArn: !GetAtt AuthAuthorizer.Arn
+            FunctionPayloadType: TOKEN
+            AuthorizerResultTtlInSeconds: 0
             Identity:
               Header: Authorization
               ReauthorizeEvery: 0

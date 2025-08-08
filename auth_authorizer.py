@@ -80,11 +80,13 @@ def lambda_handler(event, context):  # noqa: D401
     secret = os.environ.get("JWT_SECRET", "")
     if not secret:
         # If no secret configured, deny by default
+        print("[Authorizer] missing JWT_SECRET")
         return _generate_policy("anonymous", "Deny", event.get("methodArn", "*"), {"reason": "no_secret"})
 
     # Support TOKEN and REQUEST authorizer inputs
     token = None
     if isinstance(event, dict):
+        print(f"[Authorizer] invoked type={event.get('type')} keys={list(event.keys())[:6]}")
         token = event.get("authorizationToken")
         # TOKENタイプでは authorizationToken に "Bearer ..." がそのまま入るケースがある
         if token and token.lower().startswith("bearer "):
@@ -97,13 +99,16 @@ def lambda_handler(event, context):  # noqa: D401
                 token = authz.split(" ", 1)[1].strip()
 
     if not token:
+        print("[Authorizer] no token found")
         return _generate_policy("anonymous", "Deny", event.get("methodArn", "*"), {"reason": "no_token"})
 
     try:
         payload = _jwt_verify(token, secret)
         email = payload.get("sub") or payload.get("email") or "user"
+        print(f"[Authorizer] verified email={email}")
         return _generate_policy(email, "Allow", event.get("methodArn", "*"), {"email": email})
     except Exception as e:  # pylint: disable=broad-except
+        print(f"[Authorizer] verification failed: {e}")
         return _generate_policy("anonymous", "Deny", event.get("methodArn", "*"), {"reason": str(e)})
 
 
