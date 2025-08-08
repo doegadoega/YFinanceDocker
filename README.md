@@ -147,8 +147,8 @@ bash docker_local_fulltest.sh
 
 #### 個別実行
 ```bash
-# 統合版
-docker-compose run --rm --entrypoint="" yfinance-local python yfinance_cli.py tickerDetail AAPL
+# 統合版（包括）
+docker-compose run --rm --entrypoint="" yfinance-local python yfinance_cli.py info AAPL --period 1mo
 
 # 個別要素
 docker-compose run --rm --entrypoint="" yfinance-local python yfinance_cli.py basic AAPL
@@ -157,7 +157,12 @@ docker-compose run --rm --entrypoint="" yfinance-local python yfinance_cli.py fi
 
 # マーケット情報
 docker-compose run --rm --entrypoint="" yfinance-local python yfinance_cli.py home
-docker-compose run --rm --entrypoint="" yfinance-local python yfinance_cli.py rankings_stocks --type gainers
+docker-compose run --rm --entrypoint="" yfinance-local python yfinance_cli.py rankings gainers --limit 10
+docker-compose run --rm --entrypoint="" yfinance-local python yfinance_cli.py sectors --limit 10
+docker-compose run --rm --entrypoint="" yfinance-local python yfinance_cli.py indices
+docker-compose run --rm --entrypoint="" yfinance-local python yfinance_cli.py currencies
+docker-compose run --rm --entrypoint="" yfinance-local python yfinance_cli.py commodities
+docker-compose run --rm --entrypoint="" yfinance-local python yfinance_cli.py status
 ```
 
 #### 🎯 AWS Lambda シミュレーター
@@ -213,7 +218,7 @@ YFinanceDocker/
 
 # 🗑️ 削除済みファイル（重複排除）
 # - yfinance_sample.py
-# - local_test.py  
+# - local_test.py
 # - yfinance_search.py
 # - test_search_with_price.py
 # - swagger_generator_advanced.py
@@ -369,7 +374,7 @@ YFinanceDocker/
   "markets_status": { ... },
   "endpoints_integrated": [
     "news/rss", "rankings/stocks", "rankings/sectors",
-    "markets/indices", "markets/currencies", 
+    "markets/indices", "markets/currencies",
     "markets/commodities", "markets/status"
   ]
 }
@@ -571,4 +576,4 @@ YFinanceDocker/
 - **個別APIエンドポイント**: 効率的なデータ取得に対応
 - **マーケット概要機能**: ランキング、ニュース、市場情報を追加
 - **AWS Lambda シミュレーター**: SAM CLI対応
-- **重複コード完全排除**: 保守性を大幅向上 
+- **重複コード完全排除**: 保守性を大幅向上

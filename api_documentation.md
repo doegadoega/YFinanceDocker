@@ -18,7 +18,7 @@ https://{api-id}.execute-api.{region}.amazonaws.com/prod/
 
 現在の株価を取得します。
 
-**エンドポイント:** `GET /price/{ticker}`
+**エンドポイント:** `GET /ticker/price?ticker={ticker}`
 
 **パラメータ:**
 - `ticker` (required): ティッカーシンボル（例: AAPL, MSFT, 7203.T）
@@ -35,14 +35,14 @@ https://{api-id}.execute-api.{region}.amazonaws.com/prod/
 
 **cURLサンプル:**
 ```bash
-curl "https://your-api-gateway-url/prod/price/AAPL"
+curl "https://your-api-gateway-url/prod/ticker/price?ticker=AAPL"
 ```
 
 ### 2. 詳細情報取得 API
 
 株式の詳細情報を取得します。
 
-**エンドポイント:** `GET /tickerDetail/{ticker}`
+**エンドポイント:** `GET /tickerDetail?ticker={ticker}`
 
 **パラメータ:**
 - `ticker` (required): ティッカーシンボル
@@ -69,14 +69,14 @@ curl "https://your-api-gateway-url/prod/price/AAPL"
 
 **cURLサンプル:**
 ```bash
-curl "https://your-api-gateway-url/prod/tickerDetail/AAPL"
+curl "https://your-api-gateway-url/prod/tickerDetail?ticker=AAPL"
 ```
 
 ### 3. 株価履歴取得 API
 
 指定期間の株価履歴を取得します。
 
-**エンドポイント:** `GET /history/{ticker}`
+**エンドポイント:** `GET /ticker/history?ticker={ticker}&period={period}`
 
 **パラメータ:**
 - `ticker` (required): ティッカーシンボル
@@ -118,10 +118,10 @@ curl "https://your-api-gateway-url/prod/tickerDetail/AAPL"
 **cURLサンプル:**
 ```bash
 # 1ヶ月分の履歴
-curl "https://your-api-gateway-url/prod/history/AAPL"
+curl "https://your-api-gateway-url/prod/ticker/history?ticker=AAPL"
 
 # 1年分の履歴
-curl "https://your-api-gateway-url/prod/history/AAPL?period=1y"
+curl "https://your-api-gateway-url/prod/ticker/history?ticker=AAPL&period=1y"
 ```
 
 ## エラーレスポンス
