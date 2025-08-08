@@ -534,6 +534,23 @@ YFinanceDocker/
 | markets_commodities | ✅ SUCCESS | 商品価格取得正常 |
 | markets_status | ✅ SUCCESS | 市場開閉状況取得正常 |
 
+## 🔐 ユーザー認証（JWT）
+
+- 新規追加エンドポイント（YFinanceとは独立）
+  - POST `/auth/register` { email, password, name? }
+  - POST `/auth/login` { email, password } → { token, token_type, expires_in }
+  - GET `/user/me`  (要: Authorization: Bearer <JWT>)
+  - PUT `/user/me`  (要: Authorization: Bearer <JWT>) { name?, profile?{...} }
+
+- 構成
+  - DynamoDBテーブル: `<stack-name>-Users`（パーティションキー: email）
+  - Lambda Authorizer: `AuthAuthorizer`（JWT検証, Authorizationヘッダ）
+  - アプリ本体: `YFinanceFunction` にルーティング追加
+
+- 環境変数（デプロイ後に設定が必要）
+  - `USERS_TABLE`: CloudFormationにより自動参照
+  - `JWT_SECRET`: 共有シークレット（Authorizer/アプリ両方に同一値を設定）
+
 ## 🛠️ 技術スタック
 
 - **Python 3.12**
