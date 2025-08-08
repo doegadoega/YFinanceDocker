@@ -87,7 +87,7 @@ SECTOR_ETFS = {
 
 # 暗号通貨
 CRYPTO_SYMBOLS = [
-    'BTC-USD', 'ETH-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 
+    'BTC-USD', 'ETH-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD',
     'SOL-USD', 'DOGE-USD', 'MATIC-USD', 'DOT-USD', 'AVAX-USD'
 ]
 
@@ -147,7 +147,7 @@ def serialize_for_json(obj):
     """オブジェクトをJSON serializable に変換"""
     if obj is None:
         return None
-    
+
     # pd.isna()はスカラー値に対してのみ使用
     try:
         if pd.isna(obj):
@@ -155,7 +155,7 @@ def serialize_for_json(obj):
     except (ValueError, TypeError):
         # リストやnumpy配列などでpd.isna()が使えない場合は無視
         pass
-    
+
     if isinstance(obj, (pd.Timestamp, datetime)):
         return obj.strftime('%Y-%m-%d') if hasattr(obj, 'strftime') else str(obj)
     elif isinstance(obj, date):
@@ -181,22 +181,22 @@ def safe_dataframe_to_dict(df):
         # Noneや文字列エラーの場合
         if df is None or isinstance(df, str):
             return {} if df is None else df
-        
+
         # 既に辞書の場合
         if isinstance(df, dict):
             return serialize_for_json(df)
-        
+
         # リストの場合
         if isinstance(df, list):
             return serialize_for_json(df)
-        
+
         # numpy arrayの場合
         if hasattr(df, 'ndim') and hasattr(df, 'tolist'):
             try:
                 return serialize_for_json(df.tolist())
             except:
                 return {}
-        
+
         # DataFrameの場合
         if hasattr(df, 'to_dict') and hasattr(df, 'index'):
             try:
@@ -210,10 +210,10 @@ def safe_dataframe_to_dict(df):
                     return serialize_for_json(result)
                 except:
                     return f"DataFrame変換エラー: {str(inner_e)}"
-        
+
         # その他の場合は空の辞書
         return {}
-        
+
     except Exception as e:
         return f"DataFrame変換エラー: {str(e)}"
 
@@ -223,18 +223,18 @@ def safe_dataframe_to_records(df):
         # Noneや文字列エラーをそのまま返す
         if df is None or isinstance(df, str):
             return [] if df is None else df
-        
+
         # 既にリストや辞書の場合
         if isinstance(df, (list, dict)):
             return serialize_for_json(df)
-        
+
         # numpy arrayの場合
         if hasattr(df, 'ndim') and hasattr(df, 'tolist'):
             try:
                 return serialize_for_json(df.tolist())
             except:
                 return []
-        
+
         # DataFrameの場合
         if hasattr(df, 'to_dict') and hasattr(df, 'index'):
             try:
@@ -251,27 +251,27 @@ def safe_dataframe_to_records(df):
                         return []
                 except:
                     return f"DataFrame変換エラー: {str(inner_e)}"
-        
+
         # その他の場合
         return []
-        
+
     except Exception as e:
         return f"Records変換エラー: {str(e)}"
 
 def format_currency(value: Union[int, float, str], currency: str = "USD") -> str:
     """
     通貨を適切にフォーマット（共通関数）
-    
+
     Args:
         value: 数値
         currency: 通貨コード
-    
+
     Returns:
         str: フォーマットされた通貨文字列
     """
     if value is None or value == "N/A":
         return "N/A"
-    
+
     try:
         value = float(value)
         if currency == "JPY":
@@ -305,19 +305,19 @@ def validate_ticker_parameter(query_parameters, headers):
 def display_stock_info_local(ticker: str) -> None:
     """
     株式の基本情報をローカルで表示（共通関数）
-    
+
     Args:
         ticker (str): ティッカーシンボル
     """
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
-        
+
         print(f"\n=== {ticker} の基本情報（ローカル取得）===")
         print(f"会社名: {info.get('longName', 'N/A')}")
         print(f"業界: {info.get('industry', 'N/A')}")
         print(f"セクター: {info.get('sector', 'N/A')}")
-        
+
         # 価格情報の安全な表示
         current_price = info.get('currentPrice')
         if current_price is not None:
@@ -325,7 +325,7 @@ def display_stock_info_local(ticker: str) -> None:
             print(f"現在価格: {format_currency(current_price, currency)}")
         else:
             print("現在価格: N/A")
-        
+
         # 時価総額の安全な表示
         market_cap = info.get('marketCap')
         if market_cap is not None:
@@ -333,61 +333,61 @@ def display_stock_info_local(ticker: str) -> None:
             print(f"時価総額: {format_currency(market_cap, currency)}")
         else:
             print("時価総額: N/A")
-        
+
         # 配当利回りの安全な表示
         dividend_yield = info.get('dividendYield')
         if dividend_yield is not None:
             print(f"配当利回り: {dividend_yield:.2%}")
         else:
             print("配当利回り: N/A")
-        
+
     except Exception as e:
         print(f"エラー: {ticker} の情報取得に失敗しました - {e}")
 
 def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
     """
     APIから取得した包括的な株式情報を表示（共通関数）
-    
+
     Args:
         data (dict): API応答データ
     """
     if not data or 'error' in data:
         print(f"エラー: {data.get('error', '不明なエラー')}")
         return
-    
+
     ticker = data.get('ticker', 'N/A')
     print(f"\n=== {ticker} の包括的情報（API取得）===")
-    
+
     # 基本情報
     if data.get('info'):
         info = data['info']
         print(f"会社名: {info.get('longName', 'N/A')}")
         print(f"業界: {info.get('industry', 'N/A')}")
         print(f"セクター: {info.get('sector', 'N/A')}")
-        
+
         # 従業員数の安全な表示
         employees = info.get('fullTimeEmployees')
         if employees is not None:
             print(f"従業員数: {employees:,}")
         else:
             print("従業員数: N/A")
-    
+
     # 価格情報
     if data.get('price'):
         price = data['price']
         print(f"\n--- 価格情報 ---")
-        
+
         current_price = price.get('current_price')
         currency = price.get('currency', 'USD')
         print(f"現在価格: {format_currency(current_price, currency)}")
-        
+
         # 価格変化の安全な表示
         price_change = price.get('price_change')
         if price_change is not None and isinstance(price_change, (int, float)):
             direction = get_price_change_direction(price_change)
             price_change_percent = price.get('price_change_percent', 0)
             print(f"変化: {price_change:+.2f} ({price_change_percent:+.2f}%) {direction}")
-    
+
     # ESG情報
     if data.get('sustainability') and isinstance(data['sustainability'], dict):
         esg = data['sustainability'].get('esgScores', {})
@@ -397,7 +397,7 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
             print(f"環境スコア: {esg.get('environmentScore', 'N/A')}")
             print(f"社会スコア: {esg.get('socialScore', 'N/A')}")
             print(f"ガバナンススコア: {esg.get('governanceScore', 'N/A')}")
-    
+
     # 財務情報
     if data.get('financials') and isinstance(data['financials'], dict):
         income = data['financials'].get('income_statement', {})
@@ -417,7 +417,7 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
                             else:
                                 print(f"売上高: {latest_revenue}")
                     break
-    
+
     # 決算情報
     if data.get('earnings') and isinstance(data['earnings'], dict):
         earnings = data['earnings']
@@ -433,14 +433,14 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
                 print(f"予想P/E比: {earnings['forwardPE']}")
             if 'pegRatio' in earnings:
                 print(f"PEGレシオ: {earnings['pegRatio']}")
-    
+
     # 株式分割
     if data.get('splits') and isinstance(data['splits'], list) and data['splits']:
         print(f"\n--- 株式分割履歴 ---")
         for split in data['splits'][:3]:  # 最新3件
             if isinstance(split, dict):
                 print(f"日付: {split.get('date')}, 比率: {split.get('ratio')}")
-    
+
     # 配当情報
     if data.get('dividends') and isinstance(data['dividends'], list) and data['dividends']:
         print(f"\n--- 配当履歴 ---")
@@ -452,7 +452,7 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
                     print(f"日付: {dividend.get('date')}, 配当: {format_currency(amount, currency)}")
                 else:
                     print(f"日付: {dividend.get('date')}, 配当: {amount}")
-    
+
     # 株主情報
     if data.get('holders') and isinstance(data['holders'], dict):
         holders = data['holders']
@@ -463,7 +463,7 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
                 for holder in holders['major_holders'][:3]:  # 上位3件
                     if isinstance(holder, dict):
                         print(f"  {holder.get('Holder', 'N/A')}: {holder.get('% of Shares', 'N/A')}%")
-    
+
     # ESG情報
     if data.get('sustainability') and isinstance(data['sustainability'], dict):
         sustainability = data['sustainability']
@@ -475,21 +475,21 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
                 print(f"環境スコア: {esg.get('environmentScore', 'N/A')}")
                 print(f"社会スコア: {esg.get('socialScore', 'N/A')}")
                 print(f"ガバナンススコア: {esg.get('governanceScore', 'N/A')}")
-    
+
     # アナリスト推奨履歴
     if data.get('recommendations') and isinstance(data['recommendations'], list) and data['recommendations']:
         print(f"\n--- アナリスト推奨履歴 ---")
         for rec in data['recommendations'][:3]:  # 最新3件
             if isinstance(rec, dict):
                 print(f"日付: {rec.get('Date', 'N/A')}, 推奨: {rec.get('To Grade', 'N/A')}")
-    
+
     # 決算日
     if data.get('earnings_dates') and isinstance(data['earnings_dates'], list) and data['earnings_dates']:
         print(f"\n--- 決算日 ---")
         for date_info in data['earnings_dates'][:3]:  # 最新3件
             if isinstance(date_info, dict):
                 print(f"日付: {date_info.get('Earnings Date', 'N/A')}, EPS予想: {date_info.get('EPS Estimate', 'N/A')}")
-    
+
     # 株価履歴
     if data.get('history') and isinstance(data['history'], list):
         print(f"\n--- 直近の株価履歴 ---")
@@ -502,7 +502,7 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
             else:
                 volume_str = str(volume)
             print(f"{day.get('date', 'N/A')}: 終値 {close_price} (出来高: {volume_str})")
-    
+
     # アナリスト情報
     if data.get('analysts') and isinstance(data['analysts'], dict):
         analysts = data['analysts']
@@ -513,7 +513,7 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
             print(f"目標平均価格: {analysts['target_mean_price']}")
         if analysts.get('number_of_analysts'):
             print(f"アナリスト数: {analysts['number_of_analysts']}")
-    
+
     # ニュース情報
     if data.get('news') and isinstance(data['news'], list) and len(data['news']) > 0:
         print(f"\n--- 最新ニュース ---")
@@ -521,7 +521,7 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
             if isinstance(news_item, dict):
                 title = news_item.get('title', 'N/A')
                 print(f"{i}. {title}")
-    
+
     # 実行環境情報
     if data.get('execution_info'):
         exec_info = data['execution_info']
@@ -532,27 +532,27 @@ def display_comprehensive_info_api(data: Dict[str, Any]) -> None:
 def display_search_results_api(results: Dict[str, Any]) -> None:
     """
     API検索結果を表示（共通関数）
-    
+
     Args:
         results (dict): 検索結果
     """
     if not results or 'error' in results:
         print(f"検索エラー: {results.get('error', '不明なエラー')}")
         return
-    
+
     print(f"\n=== 検索結果: '{results.get('query', 'N/A')}' ({results.get('region', 'N/A')}) ===")
     print(f"件数: {results.get('count', 0)}")
-    
+
     for i, result in enumerate(results.get('results', []), 1):
         print(f"\n{i}. {result.get('symbol', 'N/A')} - {result.get('name', 'N/A')}")
         print(f"   取引所: {result.get('exchange', 'N/A')} | タイプ: {result.get('type', 'N/A')}")
-        
+
         # 価格情報の安全な表示
         current_price = result.get('current_price')
         if current_price is not None:
             currency = result.get('currency', 'USD')
             price_info = f"   価格: {format_currency(current_price, currency)}"
-            
+
             # 価格変化の安全な表示
             price_change = result.get('price_change')
             if price_change is not None and isinstance(price_change, (int, float)):
@@ -560,11 +560,11 @@ def display_search_results_api(results: Dict[str, Any]) -> None:
                 price_change_percent = result.get('price_change_percent', 0)
                 price_info += f" ({price_change:+.2f}, {price_change_percent:+.2f}% {direction})"
             print(price_info)
-        
+
         # エラー情報の表示
         if result.get('price_error'):
             print(f"   価格取得エラー: {result['price_error']}")
-    
+
     # 実行環境情報
     if results.get('execution_info'):
         exec_info = results['execution_info']
@@ -585,7 +585,7 @@ def lambda_handler(event, context):
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type'
         }
-        
+
         # OPTIONSリクエスト（CORS プリフライト）への対応
         if event.get('httpMethod') == 'OPTIONS':
             return {
@@ -593,13 +593,13 @@ def lambda_handler(event, context):
                 'headers': headers,
                 'body': json.dumps({'message': 'OK'})
             }
-        
+
         # パスとメソッドを取得
         resource = event.get('resource', '')
         method = event.get('httpMethod', '')
         path_parameters = event.get('pathParameters', {})
         query_parameters = event.get('queryStringParameters', {}) or {}
-        
+
         # ベースURL（/）へのアクセス - Swagger UIを表示
         if resource == '/' or resource == '':
             return {
@@ -610,7 +610,7 @@ def lambda_handler(event, context):
                 },
                 'body': generate_swagger_ui_html(event, context)
             }
-        
+
         # リソースごとの処理
         if '/search' in resource:
             query = query_parameters.get('q', '')
@@ -731,20 +731,20 @@ def lambda_handler(event, context):
                 'headers': headers,
                 'body': json.dumps({'error': 'リソースが見つかりません'})
             }
-        
+
         if result.get('error'):
             return {
                 'statusCode': 500,
                 'headers': headers,
                 'body': json.dumps(result)
             }
-        
+
         return {
             'statusCode': 200,
             'headers': headers,
             'body': json.dumps(result, default=serialize_for_json)
         }
-        
+
     except Exception as e:
         print(f"Lambda Error: {str(e)}")
         print(traceback.format_exc())
@@ -765,13 +765,13 @@ def search_stocks_api(query, query_parameters):
     """銘柄検索（API用）- 株価情報付き"""
     try:
         import requests
-        
+
         # 検索結果を10件に制限
         limit = min(int(query_parameters.get('limit', 10)), 10)
         region = query_parameters.get('region', 'US')
-        
+
         base_url = "https://query1.finance.yahoo.com/v1/finance/search"
-        
+
         if region.upper() == 'JP':
             params = {
                 'q': query,
@@ -788,19 +788,19 @@ def search_stocks_api(query, query_parameters):
                 'newsCount': 0,
                 'enableFuzzyQuery': True
             }
-        
+
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        
+
         response = requests.get(base_url, params=params, headers=headers)
         data = response.json()
-        
+
         if 'quotes' in data and data['quotes']:
             results = []
             for quote in data['quotes'][:10]:  # 最大10件に制限
                 symbol = quote.get('symbol', '')
-                
+
                 # 基本情報
                 result = {
                     'symbol': symbol,
@@ -810,41 +810,41 @@ def search_stocks_api(query, query_parameters):
                     'score': quote.get('score', 0),
                     'timestamp': datetime.now().isoformat()
                 }
-                
+
                 # 株価情報を取得
                 try:
                     stock = yf.Ticker(symbol)
                     info = stock.info
-                    
+
                     current_price = info.get('currentPrice', info.get('regularMarketPrice'))
                     previous_close = info.get('previousClose')
-                    
+
                     if current_price is not None:
                         result['current_price'] = round(float(current_price), 2)
                         result['currency'] = info.get('currency', 'USD')
-                        
+
                         # 前日との差分を計算
                         if previous_close is not None:
                             previous_close = float(previous_close)
                             price_change = current_price - previous_close
                             price_change_percent = (price_change / previous_close) * 100
-                            
+
                             result['previous_close'] = round(previous_close, 2)
                             result['price_change'] = round(price_change, 2)
                             result['price_change_percent'] = round(price_change_percent, 2)
                             result['price_change_direction'] = get_price_change_direction(price_change)
-                        
+
                         # 追加情報
                         result['market_cap'] = info.get('marketCap')
                         result['volume'] = info.get('volume')
                         result['avg_volume'] = info.get('averageVolume')
-                        
+
                 except Exception as e:
                     # 株価取得に失敗した場合でも基本情報は返す
                     result['price_error'] = f'株価取得エラー: {str(e)}'
-                
+
                 results.append(result)
-            
+
             return {
                 'query': query,
                 'region': region,
@@ -881,7 +881,7 @@ def get_stock_info_api(ticker, period='1mo'):
         news_info = get_stock_news_api(ticker)
         options_info = get_stock_options_api(ticker)
         sustainability_info = get_stock_sustainability_api(ticker)
-        
+
         # 統合結果を作成
         result = {
             'ticker': ticker,
@@ -922,7 +922,7 @@ def get_stock_info_api(ticker, period='1mo'):
             'execution_info': get_execution_info('LAMBDA'),
             'timestamp': datetime.now().isoformat()
         }
-        
+
         # エラーがある場合は統合
         errors = []
         for name, data in [
@@ -939,12 +939,12 @@ def get_stock_info_api(ticker, period='1mo'):
         ]:
             if data.get('error'):
                 errors.append(f"{name}: {data['error']}")
-        
+
         if errors:
             result['partial_errors'] = errors
-        
+
         return result
-        
+
     except Exception as e:
         return {'error': f'銘柄情報取得エラー: {str(e)}'}
 
@@ -952,7 +952,7 @@ def get_stock_basic_info_api(ticker):
     """基本情報取得API"""
     try:
         stock = yf.Ticker(ticker)
-        
+
         # 詳細情報
         try:
             info = stock.info
@@ -989,10 +989,10 @@ def get_stock_basic_info_api(ticker):
         try:
             if info:
                 # websiteからClearbitロゴURLを生成
-                website = (info.get('website') or 
-                          info.get('webSite') or 
+                website = (info.get('website') or
+                          info.get('webSite') or
                           info.get('companyWebsite'))
-                
+
                 if website:
                     import re
                     # ドメイン名を抽出
@@ -1000,7 +1000,7 @@ def get_stock_basic_info_api(ticker):
                     if m:
                         domain = m.group(1)
                         logo_url = f"https://logo.clearbit.com/{domain}"
-                
+
                 # websiteがない場合は主要企業を直接指定
                 if not logo_url:
                     known_logos = {
@@ -1055,13 +1055,13 @@ def get_stock_price_api(ticker):
     """株価情報取得API"""
     try:
         stock = yf.Ticker(ticker)
-        
+
         # 詳細情報と高速情報を取得
         try:
             info = stock.info
         except:
             info = {}
-        
+
         try:
             fast_info = stock.fast_info
             if hasattr(fast_info, '__dict__'):
@@ -1085,7 +1085,7 @@ def get_stock_price_api(ticker):
         try:
             current_price = fast_info.get('last_price') or info.get('currentPrice') if info else None
             previous_close = fast_info.get('previous_close') or info.get('previousClose') if info else None
-            
+
             if current_price is not None:
                 price = {
                     'current_price': round(float(current_price), 2),
@@ -1116,14 +1116,14 @@ def get_stock_history_api(ticker, period='1mo'):
     """株価履歴取得API"""
     try:
         stock = yf.Ticker(ticker)
-        
+
         # 履歴
         history = []
         try:
             valid_periods = ['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max']
             if period not in valid_periods:
                 period = '1mo'
-            
+
             hist_df = stock.history(period=period)
             if not hist_df.empty:
                 history = [{
@@ -1152,7 +1152,7 @@ def get_stock_financials_api(ticker):
     """財務情報取得API"""
     try:
         stock = yf.Ticker(ticker)
-        
+
         # 財務諸表
         financials = {}
         try:
@@ -1162,21 +1162,21 @@ def get_stock_financials_api(ticker):
                 income_stmt_data = safe_dataframe_to_dict(income_stmt)
             else:
                 income_stmt_data = {}
-            
+
             # 貸借対照表
             balance_sheet = stock.balance_sheet
             if balance_sheet is not None and hasattr(balance_sheet, 'empty') and not balance_sheet.empty:
                 balance_sheet_data = safe_dataframe_to_dict(balance_sheet)
             else:
                 balance_sheet_data = {}
-            
+
             # キャッシュフロー
             cashflow = stock.cashflow
             if cashflow is not None and hasattr(cashflow, 'empty') and not cashflow.empty:
                 cashflow_data = safe_dataframe_to_dict(cashflow)
             else:
                 cashflow_data = {}
-                
+
             financials = {
                 'income_statement': income_stmt_data,
                 'balance_sheet': balance_sheet_data,
@@ -1212,7 +1212,7 @@ def get_stock_analysts_api(ticker):
     """アナリスト情報取得API"""
     try:
         stock = yf.Ticker(ticker)
-        
+
         # アナリスト予想
         analysts = {}
         try:
@@ -1275,19 +1275,19 @@ def get_stock_holders_api(ticker):
     """株主情報取得API"""
     try:
         stock = yf.Ticker(ticker)
-        
+
         # 株主情報
         holders_data = {}
         try:
             # 大株主
             major_holders_data = safe_dataframe_to_records(stock.major_holders)
-                
+
             # 機関投資家
             institutional_holders_data = safe_dataframe_to_records(stock.institutional_holders)
-                
+
             # 投資信託
             mutualfund_holders_data = safe_dataframe_to_records(stock.mutualfund_holders)
-                
+
             holders_data = {
                 'major_holders': major_holders_data,
                 'institutional_holders': institutional_holders_data,
@@ -1318,7 +1318,7 @@ def get_stock_events_api(ticker):
     """イベント情報取得API"""
     try:
         stock = yf.Ticker(ticker)
-        
+
         # カレンダー（決算日など）
         calendar_data = []
         try:
@@ -1388,7 +1388,7 @@ def get_stock_news_api(ticker):
     """ニュース情報取得API"""
     try:
         stock = yf.Ticker(ticker)
-        
+
         # ニュース
         news = []
         try:
@@ -1417,7 +1417,7 @@ def get_stock_options_api(ticker):
     """オプション情報取得API"""
     try:
         stock = yf.Ticker(ticker)
-        
+
         # オプション
         options_data = []
         try:
@@ -1459,7 +1459,7 @@ def get_stock_sustainability_api(ticker):
     """ESG情報取得API"""
     try:
         stock = yf.Ticker(ticker)
-        
+
         # ESG情報
         sustainability_data = {}
         try:
@@ -1480,88 +1480,134 @@ def get_stock_sustainability_api(ticker):
         return {'error': f'ESG情報取得エラー: {str(e)}'}
 
 def get_stock_home_api():
-    """ホーム画面用情報取得API - 各エンドポイントの処理を統合"""
+    """ホーム画面用情報取得API - 各エンドポイントの処理を並行実行で統合"""
+    import concurrent.futures
+    import time
+
     try:
         result = {}
-        
-        # 1. news/rss の処理
-        try:
-            news_params = {'limit': '10', 'sort': 'published_desc'}
-            news_result = lamuda_get_rss_news_api(news_params)
-            result['news_rss'] = news_result
-        except Exception as e:
-            result['news_rss'] = {'error': f'ニュース取得エラー: {str(e)}'}
-        
-        # 2. rankings/stocks の処理
-        try:
-            rankings_params = {'type': 'gainers', 'limit': '10', 'market': 'sp500'}
-            gainers_result = get_stock_rankings_api(rankings_params)
-            
-            rankings_params = {'type': 'losers', 'limit': '10', 'market': 'sp500'}
-            losers_result = get_stock_rankings_api(rankings_params)
-            
-            result['rankings_stocks'] = {
-                'gainers': gainers_result,
-                'losers': losers_result
+        start_time = time.time()
+
+        # 並行処理用のヘルパー関数
+        def fetch_news():
+            try:
+                news_params = {'limit': '10', 'sort': 'published_desc'}
+                return ('news_rss', lamuda_get_rss_news_api(news_params))
+            except Exception as e:
+                return ('news_rss', {'error': f'ニュース取得エラー: {str(e)}'})
+
+        def fetch_gainers():
+            try:
+                rankings_params = {'type': 'gainers', 'limit': '10', 'market': 'sp500'}
+                return ('gainers', get_stock_rankings_api(rankings_params))
+            except Exception as e:
+                return ('gainers', {'error': f'上昇株取得エラー: {str(e)}'})
+
+        def fetch_losers():
+            try:
+                rankings_params = {'type': 'losers', 'limit': '10', 'market': 'sp500'}
+                return ('losers', get_stock_rankings_api(rankings_params))
+            except Exception as e:
+                return ('losers', {'error': f'下落株取得エラー: {str(e)}'})
+
+        def fetch_sectors():
+            try:
+                sector_rankings_params = {'limit': '10'}
+                return ('rankings_sectors', get_sector_rankings_api(sector_rankings_params))
+            except Exception as e:
+                return ('rankings_sectors', {'error': f'セクターランキング取得エラー: {str(e)}'})
+
+        def fetch_indices():
+            try:
+                indices_params = {}
+                return ('markets_indices', get_markets_indices_api(indices_params))
+            except Exception as e:
+                return ('markets_indices', {'error': f'主要指数取得エラー: {str(e)}'})
+
+        def fetch_currencies():
+            try:
+                currency_params = {}
+                return ('markets_currencies', get_markets_currencies_api(currency_params))
+            except Exception as e:
+                return ('markets_currencies', {'error': f'為替レート取得エラー: {str(e)}'})
+
+        def fetch_commodities():
+            try:
+                commodity_params = {}
+                return ('markets_commodities', get_markets_commodities_api(commodity_params))
+            except Exception as e:
+                return ('markets_commodities', {'error': f'商品価格取得エラー: {str(e)}'})
+
+        def fetch_status():
+            try:
+                status_params = {}
+                return ('markets_status', get_markets_status_api(status_params))
+            except Exception as e:
+                return ('markets_status', {'error': f'市場状況取得エラー: {str(e)}'})
+
+        # 並行処理で全ての API を実行（タイムアウト設定）
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            # 全てのタスクを並行実行
+            future_to_name = {
+                executor.submit(fetch_news): 'news',
+                executor.submit(fetch_gainers): 'gainers',
+                executor.submit(fetch_losers): 'losers',
+                executor.submit(fetch_sectors): 'sectors',
+                executor.submit(fetch_indices): 'indices',
+                executor.submit(fetch_currencies): 'currencies',
+                executor.submit(fetch_commodities): 'commodities',
+                executor.submit(fetch_status): 'status'
             }
-        except Exception as e:
-            result['rankings_stocks'] = {'error': f'株価ランキング取得エラー: {str(e)}'}
-        
-        # 3. rankings/sectors の処理
-        try:
-            sector_rankings_params = {'limit': '10'}
-            sector_result = get_sector_rankings_api(sector_rankings_params)
-            result['rankings_sectors'] = sector_result
-        except Exception as e:
-            result['rankings_sectors'] = {'error': f'セクターランキング取得エラー: {str(e)}'}
-        
-        # 4. markets/indices の処理
-        try:
-            indices_params = {}
-            indices_result = get_markets_indices_api(indices_params)
-            result['markets_indices'] = indices_result
-        except Exception as e:
-            result['markets_indices'] = {'error': f'主要指数取得エラー: {str(e)}'}
-        
-        # 5. markets/currencies の処理
-        try:
-            currency_params = {}
-            currency_result = get_markets_currencies_api(currency_params)
-            result['markets_currencies'] = currency_result
-        except Exception as e:
-            result['markets_currencies'] = {'error': f'為替レート取得エラー: {str(e)}'}
-        
-        # 6. markets/commodities の処理
-        try:
-            commodity_params = {}
-            commodity_result = get_markets_commodities_api(commodity_params)
-            result['markets_commodities'] = commodity_result
-        except Exception as e:
-            result['markets_commodities'] = {'error': f'商品価格取得エラー: {str(e)}'}
-        
-        # 7. markets/status の処理
-        try:
-            status_params = {}
-            status_result = get_markets_status_api(status_params)
-            result['markets_status'] = status_result
-        except Exception as e:
-            result['markets_status'] = {'error': f'市場状況取得エラー: {str(e)}'}
-        
+
+            gainers_result = None
+            losers_result = None
+
+            # 結果を収集（30秒でタイムアウト）
+            for future in concurrent.futures.as_completed(future_to_name, timeout=30):
+                try:
+                    key, data = future.result()
+                    if key == 'gainers':
+                        gainers_result = data
+                    elif key == 'losers':
+                        losers_result = data
+                    elif key in ['news_rss', 'rankings_sectors', 'markets_indices', 'markets_currencies', 'markets_commodities', 'markets_status']:
+                        result[key] = data
+                except Exception as e:
+                    # 個別のタスクが失敗した場合
+                    task_name = future_to_name[future]
+                    result[f'{task_name}_error'] = f'{task_name}取得エラー: {str(e)}'
+
+            # rankings_stocks を組み立て
+            if gainers_result and losers_result:
+                result['rankings_stocks'] = {
+                    'gainers': gainers_result,
+                    'losers': losers_result
+                }
+            else:
+                result['rankings_stocks'] = {
+                    'gainers': gainers_result or {'error': '上昇株データ取得失敗'},
+                    'losers': losers_result or {'error': '下落株データ取得失敗'}
+                }
+
         # メタ情報
+        end_time = time.time()
         result['execution_info'] = get_execution_info('LAMBDA')
+        result['execution_info']['parallel_execution_time'] = f"{end_time - start_time:.2f}秒"
         result['timestamp'] = datetime.now().isoformat()
         result['endpoints_integrated'] = [
             'news/rss',
-            'rankings/stocks', 
+            'rankings/stocks',
             'rankings/sectors',
             'markets/indices',
             'markets/currencies',
             'markets/commodities',
             'markets/status'
         ]
-        
+
         return result
-        
+
+    except concurrent.futures.TimeoutError:
+        return {'error': 'ホーム情報取得がタイムアウトしました（30秒）'}
     except Exception as e:
         return {'error': f'ホーム情報取得エラー: {str(e)}'}
 
@@ -1572,12 +1618,12 @@ def get_api_gateway_url(event=None, context=None):
     api_url = os.environ.get('API_GATEWAY_URL', '')
     if api_url:
         return api_url
-    
+
     # 2. 代替環境変数から取得
     api_url = os.environ.get('AWS_API_GATEWAY_URL', '')
     if api_url:
         return api_url
-    
+
     # 3. リクエストヘッダーから取得
     if event:
         headers = event.get('headers', {})
@@ -1585,7 +1631,7 @@ def get_api_gateway_url(event=None, context=None):
         if host:
             protocol = 'https' if headers.get('X-Forwarded-Proto') == 'https' else 'http'
             return f"{protocol}://{host}"
-    
+
     # 4. Lambdaコンテキストから取得
     if context:
         try:
@@ -1597,7 +1643,7 @@ def get_api_gateway_url(event=None, context=None):
                     return f"https://execute-api.{region}.amazonaws.com/prod/"
         except:
             pass
-    
+
     # 5. AWS SDKを使用してCloudFormationから取得
     try:
         import boto3
@@ -1610,7 +1656,7 @@ def get_api_gateway_url(event=None, context=None):
                 return output['OutputValue']
     except:
         pass
-    
+
     # 6. 最後の手段として固定URLを使用
     return 'https://zwtiey61i2.execute-api.ap-northeast-1.amazonaws.com/prod'
 
@@ -1618,7 +1664,7 @@ def generate_swagger_ui_html(event=None, context=None):
     """Swagger UIのHTMLを生成"""
     # API GatewayのベースURLを動的に取得
     api_url = get_api_gateway_url(event, context)
-    
+
     # Swagger仕様書のJSON（簡略版）
     swagger_spec = {
         "openapi": "3.0.0",
@@ -1673,17 +1719,17 @@ def generate_swagger_ui_html(event=None, context=None):
                                         "type": "object",
                                         "properties": {
                                             "query": {
-                                                "type": "string", 
+                                                "type": "string",
                                                 "example": "apple",
                                                 "description": "検索キーワード"
                                             },
                                             "region": {
-                                                "type": "string", 
+                                                "type": "string",
                                                 "example": "US",
                                                 "description": "検索リージョン"
                                             },
                                             "count": {
-                                                "type": "integer", 
+                                                "type": "integer",
                                                 "example": 7,
                                                 "description": "検索結果件数"
                                             },
@@ -1694,22 +1740,22 @@ def generate_swagger_ui_html(event=None, context=None):
                                                     "type": "object",
                                                     "properties": {
                                                         "symbol": {
-                                                            "type": "string", 
+                                                            "type": "string",
                                                             "example": "AAPL",
                                                             "description": "ティッカーシンボル"
                                                         },
                                                         "name": {
-                                                            "type": "string", 
+                                                            "type": "string",
                                                             "example": "Apple Inc.",
                                                             "description": "企業名"
                                                         },
                                                         "current_price": {
-                                                            "type": "number", 
+                                                            "type": "number",
                                                             "example": 208.62,
                                                             "description": "現在の株価"
                                                         },
                                                         "price_change_direction": {
-                                                            "type": "string", 
+                                                            "type": "string",
                                                             "example": "up",
                                                             "description": "価格変化の方向"
                                                         }
@@ -1757,7 +1803,7 @@ def generate_swagger_ui_html(event=None, context=None):
                                         "type": "object",
                                         "properties": {
                                             "ticker": {
-                                                "type": "string", 
+                                                "type": "string",
                                                 "example": "AAPL",
                                                 "description": "ティッカーシンボル"
                                             },
@@ -1846,7 +1892,7 @@ def generate_swagger_ui_html(event=None, context=None):
                                                 "description": "実行環境情報"
                                             },
                                             "timestamp": {
-                                                "type": "string", 
+                                                "type": "string",
                                                 "format": "date-time",
                                                 "description": "データ取得時刻"
                                             }
@@ -2748,7 +2794,7 @@ def generate_swagger_ui_html(event=None, context=None):
             }
         }
     }
-    
+
     # Swagger UIのHTML
     html = f"""
 <!DOCTYPE html>
@@ -2824,7 +2870,7 @@ def get_stock_chart_api(ticker, period='1mo', size='800x400', chart_type='line')
             try:
                 import mplfinance as mpf
                 buf = BytesIO()
-                mpf.plot(hist, type='candle', style='charles', 
+                mpf.plot(hist, type='candle', style='charles',
                         figsize=(width/100, height/100),
                         title=f'{ticker} {period} candlestick',
                         savefig=dict(fname=buf, format='png', dpi=100))
@@ -2834,7 +2880,7 @@ def get_stock_chart_api(ticker, period='1mo', size='800x400', chart_type='line')
             except Exception:
                 # フォールバック: 折れ線グラフ
                 pass
-        
+
         # 折れ線グラフ（デフォルトまたはフォールバック）
         plt.figure(figsize=(width/100, height/100))
         plt.plot(hist.index, hist['Close'], label='Close')
@@ -2993,10 +3039,10 @@ def get_stock_rankings_api(query_parameters):
         ranking_type = query_parameters.get('type', 'gainers')
         limit = min(int(query_parameters.get('limit', 10)), 50)
         market = query_parameters.get('market', 'us')
-        
+
         # 主要銘柄から取得
         stocks = get_multiple_stock_data(MAJOR_STOCKS)
-        
+
         if ranking_type == 'gainers':
             # 上昇銘柄のみフィルタ
             rankings = [stock for stock in stocks if stock['change_percent'] > 0]
@@ -3015,17 +3061,17 @@ def get_stock_rankings_api(query_parameters):
             rankings.sort(key=lambda x: x['market_cap'], reverse=True)
         else:
             return {'error': f'無効なランキング種別: {ranking_type}'}
-        
+
         # 制限数で切り取り
         rankings = rankings[:limit]
-        
+
         # ランク付け
         for i, stock in enumerate(rankings):
             stock['rank'] = i + 1
-        
+
         # 画像生成
         chart_image = generate_ranking_chart(rankings, ranking_type)
-        
+
         return {
             'status': 'success',
             'type': ranking_type,
@@ -3039,7 +3085,7 @@ def get_stock_rankings_api(query_parameters):
             },
             'timestamp': datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         return {'error': f'ランキング取得エラー: {str(e)}'}
 
@@ -3047,21 +3093,21 @@ def get_sector_rankings_api(query_parameters):
     """セクター・業界ランキング取得API（改善版）"""
     try:
         limit = min(int(query_parameters.get('limit', 10)), 20)
-        
+
         sector_data = []
-        
+
         for sector_name, etf_symbol in SECTOR_ETFS.items():
             try:
                 ticker = yf.Ticker(etf_symbol)
                 hist = ticker.history(period="2d")
                 info = ticker.info
-                
+
                 if len(hist) >= 2:
                     current_price = hist['Close'].iloc[-1]
                     prev_price = hist['Close'].iloc[-2]
                     change = current_price - prev_price
                     change_percent = (change / prev_price) * 100
-                    
+
                     sector_data.append({
                         'sector': sector_name,
                         'symbol': etf_symbol,
@@ -3073,17 +3119,17 @@ def get_sector_rankings_api(query_parameters):
                     })
             except Exception as e:
                 continue
-        
+
         # パフォーマンス順でソート
         sector_data.sort(key=lambda x: x['change_percent'], reverse=True)
-        
+
         # ランク付け
         for i, sector in enumerate(sector_data[:limit]):
             sector['rank'] = i + 1
-        
+
         # 画像生成
         chart_image = generate_sector_chart(sector_data[:limit], 'performance')
-        
+
         return {
             'status': 'success',
             'type': 'performance',
@@ -3096,7 +3142,7 @@ def get_sector_rankings_api(query_parameters):
             },
             'timestamp': datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         return {'error': f'セクターランキング取得エラー: {str(e)}'}
 
@@ -3105,21 +3151,21 @@ def get_crypto_rankings_api(query_parameters):
     try:
         limit = min(int(query_parameters.get('limit', 10)), 20)
         sort_by = query_parameters.get('sort', 'change')  # change, price, volume, market_cap
-        
+
         crypto_data = []
-        
+
         for symbol in CRYPTO_SYMBOLS:
             try:
                 ticker = yf.Ticker(symbol)
                 hist = ticker.history(period="2d")
                 info = ticker.info
-                
+
                 if len(hist) >= 2:
                     current_price = hist['Close'].iloc[-1]
                     prev_price = hist['Close'].iloc[-2]
                     change = current_price - prev_price
                     change_percent = (change / prev_price) * 100
-                    
+
                     crypto_data.append({
                         'symbol': symbol,
                         'name': symbol.replace('-USD', ''),
@@ -3131,7 +3177,7 @@ def get_crypto_rankings_api(query_parameters):
                     })
             except Exception as e:
                 continue
-        
+
         # ソート
         if sort_by == 'change':
             crypto_data.sort(key=lambda x: x['change_percent'], reverse=True)
@@ -3142,11 +3188,11 @@ def get_crypto_rankings_api(query_parameters):
         elif sort_by == 'market_cap':
             crypto_data = [c for c in crypto_data if c.get('market_cap')]
             crypto_data.sort(key=lambda x: x['market_cap'], reverse=True)
-        
+
         # ランク付け
         for i, crypto in enumerate(crypto_data[:limit]):
             crypto['rank'] = i + 1
-        
+
         return {
             'status': 'success',
             'type': 'crypto',
@@ -3158,7 +3204,7 @@ def get_crypto_rankings_api(query_parameters):
             },
             'timestamp': datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         return {'error': f'暗号通貨ランキング取得エラー: {str(e)}'}
 
@@ -3166,18 +3212,18 @@ def get_markets_indices_api(query_parameters):
     """主要指数一覧取得API"""
     try:
         indices_data = []
-        
+
         for index_name, symbol in MAJOR_INDICES.items():
             try:
                 ticker = yf.Ticker(symbol)
                 hist = ticker.history(period="2d")
-                
+
                 if len(hist) >= 2:
                     current_value = hist['Close'].iloc[-1]
                     prev_value = hist['Close'].iloc[-2]
                     change = current_value - prev_value
                     change_percent = (change / prev_value) * 100
-                    
+
                     indices_data.append({
                         'name': index_name,
                         'symbol': symbol,
@@ -3188,7 +3234,7 @@ def get_markets_indices_api(query_parameters):
                     })
             except Exception as e:
                 continue
-        
+
         return {
             'status': 'success',
             'data': indices_data,
@@ -3198,7 +3244,7 @@ def get_markets_indices_api(query_parameters):
             },
             'timestamp': datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         return {'error': f'指数データ取得エラー: {str(e)}'}
 
@@ -3206,18 +3252,18 @@ def get_markets_currencies_api(query_parameters):
     """為替レート取得API"""
     try:
         currency_data = []
-        
+
         for pair_name, symbol in CURRENCY_PAIRS.items():
             try:
                 ticker = yf.Ticker(symbol)
                 hist = ticker.history(period="2d")
-                
+
                 if len(hist) >= 2:
                     current_rate = hist['Close'].iloc[-1]
                     prev_rate = hist['Close'].iloc[-2]
                     change = current_rate - prev_rate
                     change_percent = (change / prev_rate) * 100
-                    
+
                     currency_data.append({
                         'pair': pair_name,
                         'symbol': symbol,
@@ -3227,7 +3273,7 @@ def get_markets_currencies_api(query_parameters):
                     })
             except Exception as e:
                 continue
-        
+
         return {
             'status': 'success',
             'data': currency_data,
@@ -3237,7 +3283,7 @@ def get_markets_currencies_api(query_parameters):
             },
             'timestamp': datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         return {'error': f'為替データ取得エラー: {str(e)}'}
 
@@ -3245,18 +3291,18 @@ def get_markets_commodities_api(query_parameters):
     """商品価格取得API"""
     try:
         commodity_data = []
-        
+
         for commodity_name, symbol in COMMODITIES.items():
             try:
                 ticker = yf.Ticker(symbol)
                 hist = ticker.history(period="2d")
-                
+
                 if len(hist) >= 2:
                     current_price = hist['Close'].iloc[-1]
                     prev_price = hist['Close'].iloc[-2]
                     change = current_price - prev_price
                     change_percent = (change / prev_price) * 100
-                    
+
                     commodity_data.append({
                         'name': commodity_name,
                         'symbol': symbol,
@@ -3267,7 +3313,7 @@ def get_markets_commodities_api(query_parameters):
                     })
             except Exception as e:
                 continue
-        
+
         return {
             'status': 'success',
             'data': commodity_data,
@@ -3277,7 +3323,7 @@ def get_markets_commodities_api(query_parameters):
             },
             'timestamp': datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         return {'error': f'商品データ取得エラー: {str(e)}'}
 
@@ -3308,38 +3354,38 @@ def get_markets_status_api(query_parameters):
                 'days': [0, 1, 2, 3, 4]
             }
         ]
-        
+
         market_status = []
-        
+
         for market in markets:
             try:
                 # 簡易的な時間計算（pytzなし）
                 from datetime import datetime, timedelta
                 import time
-                
+
                 # UTC時間を取得
                 utc_now = datetime.utcnow()
-                
+
                 # タイムゾーンオフセット（簡易版）
                 tz_offsets = {
                     'US/Eastern': -5,
                     'Asia/Tokyo': 9,
                     'Europe/London': 0
                 }
-                
+
                 offset = tz_offsets.get(market['timezone'], 0)
                 local_time = utc_now + timedelta(hours=offset)
-                
+
                 # 現在の曜日が営業日かチェック
                 is_business_day = local_time.weekday() in market['days']
-                
+
                 # 営業時間内かチェック
                 open_time = datetime.strptime(market['open_time'], '%H:%M').time()
                 close_time = datetime.strptime(market['close_time'], '%H:%M').time()
-                
-                is_open = (is_business_day and 
+
+                is_open = (is_business_day and
                           open_time <= local_time.time() <= close_time)
-                
+
                 market_status.append({
                     'market': market['name'],
                     'timezone': market['timezone'],
@@ -3349,16 +3395,16 @@ def get_markets_status_api(query_parameters):
                     'open_time': market['open_time'],
                     'close_time': market['close_time']
                 })
-                
+
             except Exception as e:
                 continue
-        
+
         return {
             'status': 'success',
             'data': market_status,
             'timestamp': datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         return {'error': f'市場状況取得エラー: {str(e)}'}
 
@@ -3368,15 +3414,15 @@ def safe_get_stock_data(symbol):
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period="2d")
         info = ticker.info
-        
+
         if len(hist) < 2:
             return None
-            
+
         current_price = hist['Close'].iloc[-1]
         prev_price = hist['Close'].iloc[-2]
         change = current_price - prev_price
         change_percent = (change / prev_price) * 100
-        
+
         return {
             'symbol': symbol,
             'name': info.get('longName', info.get('shortName', symbol)),
@@ -3395,20 +3441,20 @@ def get_multiple_stock_data(symbols):
     try:
         # yfinanceで複数銘柄を一度に取得
         tickers = yf.Tickers(' '.join(symbols))
-        
+
         results = []
         for symbol in symbols:
             try:
                 ticker = tickers.tickers[symbol]
                 hist = ticker.history(period="2d")
                 info = ticker.info
-                
+
                 if len(hist) >= 2:
                     current_price = hist['Close'].iloc[-1]
                     prev_price = hist['Close'].iloc[-2]
                     change = current_price - prev_price
                     change_percent = (change / prev_price) * 100
-                    
+
                     data = {
                         'symbol': symbol,
                         'name': info.get('longName', info.get('shortName', symbol)),
@@ -3422,7 +3468,7 @@ def get_multiple_stock_data(symbols):
                     results.append(data)
             except Exception as e:
                 continue
-        
+
         return results
     except Exception as e:
         # フォールバック: 個別取得
@@ -3438,12 +3484,12 @@ def generate_ranking_chart(rankings, ranking_type):
     try:
         if not rankings:
             return None
-            
+
         plt.figure(figsize=(12, 8))
-        
+
         symbols = [item['symbol'] for item in rankings]
         values = []
-        
+
         if ranking_type in ['gainers', 'losers']:
             values = [item['price_change_percent'] for item in rankings]
             ylabel = 'Price Change (%)'
@@ -3456,30 +3502,30 @@ def generate_ranking_chart(rankings, ranking_type):
             values = [item['market_cap'] / 1000000000 for item in rankings]  # 十億単位
             ylabel = 'Market Cap (Billions)'
             title = f'Top {len(rankings)} Market Cap Leaders'
-        
+
         colors = ['green' if x >= 0 else 'red' for x in values] if ranking_type in ['gainers', 'losers'] else ['blue'] * len(values)
-        
+
         bars = plt.barh(symbols, values, color=colors)
         plt.xlabel(ylabel)
         plt.title(title)
         plt.gca().invert_yaxis()
-        
+
         # 値ラベルを追加
         for i, (bar, value) in enumerate(zip(bars, values)):
-            plt.text(bar.get_width() + (max(values) * 0.01), bar.get_y() + bar.get_height()/2, 
+            plt.text(bar.get_width() + (max(values) * 0.01), bar.get_y() + bar.get_height()/2,
                     f'{value:.1f}', va='center')
-        
+
         plt.tight_layout()
-        
+
         # 画像をBase64エンコード
         buf = BytesIO()
         plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
         plt.close()
         buf.seek(0)
         img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-        
+
         return img_base64
-        
+
     except Exception as e:
         return None
 
@@ -3488,46 +3534,46 @@ def generate_sector_chart(sector_data, ranking_type):
     try:
         if not sector_data:
             return None
-            
+
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
-        
+
         sectors = [item['name'] for item in sector_data]
         etf_values = [item['price_change_percent'] for item in sector_data]
         constituent_values = [item['constituent_change_avg'] for item in sector_data]
-        
+
         # ETFパフォーマンス
         colors1 = ['green' if x >= 0 else 'red' for x in etf_values]
         bars1 = ax1.barh(sectors, etf_values, color=colors1)
         ax1.set_xlabel('ETF Price Change (%)')
         ax1.set_title('Sector ETF Performance')
         ax1.invert_yaxis()
-        
+
         # 構成銘柄平均パフォーマンス
         colors2 = ['green' if x >= 0 else 'red' for x in constituent_values]
         bars2 = ax2.barh(sectors, constituent_values, color=colors2)
         ax2.set_xlabel('Constituent Average Change (%)')
         ax2.set_title('Sector Constituent Performance')
         ax2.invert_yaxis()
-        
+
         # 値ラベルを追加
         for bar, value in zip(bars1, etf_values):
-            ax1.text(bar.get_width() + (max(etf_values) * 0.01), bar.get_y() + bar.get_height()/2, 
+            ax1.text(bar.get_width() + (max(etf_values) * 0.01), bar.get_y() + bar.get_height()/2,
                     f'{value:.1f}', va='center')
-        
+
         for bar, value in zip(bars2, constituent_values):
-            ax2.text(bar.get_width() + (max(constituent_values) * 0.01), bar.get_y() + bar.get_height()/2, 
+            ax2.text(bar.get_width() + (max(constituent_values) * 0.01), bar.get_y() + bar.get_height()/2,
                     f'{value:.1f}', va='center')
-        
+
         plt.tight_layout()
-        
+
         # 画像をBase64エンコード
         buf = BytesIO()
         plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
         plt.close()
         buf.seek(0)
         img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-        
+
         return img_base64
-        
+
     except Exception as e:
         return None

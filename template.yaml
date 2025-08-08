@@ -4,8 +4,8 @@ Description: 'YFinance API - 株式データ取得API'
 
 Globals:
   Function:
-    Timeout: 30
-    MemorySize: 512
+    Timeout: 60
+    MemorySize: 1024
     Environment:
       Variables:
         PYTHONPATH: /opt/python
@@ -27,7 +27,7 @@ Resources:
     Properties:
       PackageType: Image
       MemorySize: 1024
-      Timeout: 30
+      Timeout: 60
       Architectures:
         - x86_64
       Environment:
