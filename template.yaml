@@ -18,9 +18,18 @@ Resources:
       BinaryMediaTypes:
         - image/png
       Cors:
-        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowMethods: "'GET,POST,PUT,OPTIONS'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
         AllowOrigin: "'*'"
+      Auth:
+        Authorizers:
+          UserJwtAuthorizer:
+            FunctionArn: !GetAtt AuthAuthorizer.Arn
+            FunctionPayloadType: TOKEN
+            AuthorizerResultTtlInSeconds: 0
+            Identity:
+              Header: Authorization
+              ReauthorizeEvery: 0
 
   YFinanceFunction:
     Type: AWS::Serverless::Function
@@ -34,6 +43,11 @@ Resources:
         Variables:
           # 環境変数は後で動的に設定されるため、ここでは空にする
           API_GATEWAY_URL: ""
+          USERS_TABLE: !Ref UsersTable
+          JWT_SECRET: ""
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
       Events:
         # ベースURL - Swagger UI表示
         GetSwaggerUI:
@@ -42,6 +56,36 @@ Resources:
             RestApiId: !Ref YFinanceApi
             Path: /
             Method: get
+        # 認証系（公開）
+        AuthRegister:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /auth/register
+            Method: post
+        AuthLogin:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /auth/login
+            Method: post
+        # 認証必須エンドポイント
+        GetUserMe:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /user/me
+            Method: get
+            Auth:
+              Authorizer: UserJwtAuthorizer
+        UpdateUserMe:
+          Type: Api
+          Properties:
+            RestApiId: !Ref YFinanceApi
+            Path: /user/me
+            Method: put
+            Auth:
+              Authorizer: UserJwtAuthorizer
         SearchStocks:
           Type: Api
           Properties:
@@ -179,6 +223,39 @@ Resources:
       DockerContext: .
       DockerTag: latest
 
+  # Lambda オーソライザー（JWT検証）
+  AuthAuthorizer:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      MemorySize: 256
+      Timeout: 10
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          JWT_SECRET: ""
+      ImageConfig:
+        Command:
+          - auth_authorizer.lambda_handler
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: .
+      DockerTag: latest
+
+  # DynamoDB ユーザーテーブル
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+      TableName: !Sub "${AWS::StackName}-Users"
+
 Outputs:
   YFinanceApiUrl:
     Description: 'API Gateway endpoint URL'
@@ -197,3 +274,9 @@ Outputs:
     Value: !Ref YFinanceFunction
     Export:
       Name: YFinanceFunctionName
+
+  AuthAuthorizerFunctionName:
+    Description: 'AuthAuthorizer Lambda Function Name'
+    Value: !Ref AuthAuthorizer
+    Export:
+      Name: AuthAuthorizerFunctionName

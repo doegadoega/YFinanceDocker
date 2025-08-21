@@ -13,10 +13,234 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from io import BytesIO
 import base64
+import hmac
+import hashlib
+import base64 as _b64
 
 # ... 既存のimport文の下に追加 ...
 BULLISH_THRESHOLD = 0.5
 BEARISH_THRESHOLD = -0.5
+
+# =====================
+# 認証/ユーザー管理 追加
+# =====================
+import time
+import json as _json
+import boto3
+from botocore.exceptions import ClientError
+
+
+def _b64url_encode(data: bytes) -> str:
+    return _b64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _b64url_decode(data_str: str) -> bytes:
+    padding = '=' * (-len(data_str) % 4)
+    return _b64.urlsafe_b64decode(data_str + padding)
+
+
+def _jwt_sign(payload: dict, secret: str, expires_in_seconds: int = 3600) -> str:
+    header = {"alg": "HS256", "typ": "JWT"}
+    now = int(time.time())
+    payload = {
+        **payload,
+        "iat": now,
+        "exp": now + int(expires_in_seconds),
+    }
+    header_b64 = _b64url_encode(_json.dumps(header, separators=(',', ':')).encode('utf-8'))
+    payload_b64 = _b64url_encode(_json.dumps(payload, separators=(',', ':')).encode('utf-8'))
+    signing_input = f"{header_b64}.{payload_b64}".encode('utf-8')
+    sig = hmac.new(secret.encode('utf-8'), signing_input, hashlib.sha256).digest()
+    signature_b64 = _b64url_encode(sig)
+    return f"{header_b64}.{payload_b64}.{signature_b64}"
+
+
+def _get_json_body(event: Dict[str, Any]) -> Dict[str, Any]:
+    body = event.get('body')
+    if not body:
+        return {}
+    if event.get('isBase64Encoded'):
+        try:
+            body = base64.b64decode(body).decode('utf-8')
+        except Exception:
+            return {}
+    try:
+        return json.loads(body)
+    except Exception:
+        return {}
+
+
+def _get_users_table():
+    table_name = os.environ.get('USERS_TABLE', '')
+    if not table_name:
+        raise RuntimeError('USERS_TABLE is not configured')
+    ddb = boto3.resource('dynamodb')
+    return ddb.Table(table_name)
+
+
+def _hash_password(password: str, salt: Optional[bytes] = None, iterations: int = 100_000) -> Dict[str, Any]:
+    if salt is None:
+        salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations)
+    return {
+        'algo': 'pbkdf2_sha256',
+        'iter': iterations,
+        'salt': base64.b64encode(salt).decode('ascii'),
+        'hash': base64.b64encode(dk).decode('ascii'),
+    }
+
+
+def _verify_password(password: str, stored: Dict[str, Any]) -> bool:
+    try:
+        if stored.get('algo') != 'pbkdf2_sha256':
+            return False
+        iterations = int(stored.get('iter', 100_000))
+        salt = base64.b64decode(stored['salt'])
+        expected = base64.b64decode(stored['hash'])
+        dk = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations)
+        return hmac.compare_digest(dk, expected)
+    except Exception:
+        return False
+
+
+def handle_auth_register(event: Dict[str, Any]) -> Dict[str, Any]:
+    headers = {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    }
+    data = _get_json_body(event)
+    email = (data.get('email') or '').strip().lower()
+    password = data.get('password') or ''
+    name = (data.get('name') or '').strip()
+    profile_in = data.get('profile') if isinstance(data.get('profile'), dict) else {}
+    if not email or not password:
+        return {'error': 'emailとpasswordは必須です'}
+    table = _get_users_table()
+    try:
+        # 既存チェック
+        res = table.get_item(Key={'email': email})
+        if 'Item' in res:
+            return {'error': 'このメールは既に登録されています'}
+        pw = _hash_password(password)
+        item = {
+            'email': email,
+            'password': pw,
+            'name': name,
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat(),
+            'profile': profile_in,
+        }
+        table.put_item(Item=item, ConditionExpression='attribute_not_exists(email)')
+        return {'status': 'ok'}
+    except ClientError as e:
+        return {'error': f'DynamoDBエラー: {e.response.get("Error", {}).get("Message", str(e))}'}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def handle_auth_login(event: Dict[str, Any]) -> Dict[str, Any]:
+    data = _get_json_body(event)
+    email = (data.get('email') or '').strip().lower()
+    password = data.get('password') or ''
+    if not email or not password:
+        return {'error': 'emailとpasswordは必須です'}
+    table = _get_users_table()
+    try:
+        res = table.get_item(Key={'email': email})
+        user = res.get('Item')
+        if not user or not _verify_password(password, user.get('password', {})):
+            return {'error': '認証に失敗しました'}
+        secret = os.environ.get('JWT_SECRET', '')
+        if not secret:
+            return {'error': 'サーバー設定エラー（JWT_SECRET未設定）'}
+        token = _jwt_sign({'sub': email, 'email': email}, secret, expires_in_seconds=3600)
+        return {'token': token, 'token_type': 'Bearer', 'expires_in': 3600}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _get_authorized_email(event: Dict[str, Any]) -> Optional[str]:
+    try:
+        rc = event.get('requestContext') or {}
+        authz = rc.get('authorizer') or {}
+        email = authz.get('email') or authz.get('principalId')
+        return email
+    except Exception:
+        return None
+
+
+def handle_user_me_get(event: Dict[str, Any]) -> Dict[str, Any]:
+    email = _get_authorized_email(event)
+    if not email:
+        return {'error': '未認証です'}
+    table = _get_users_table()
+    try:
+        res = table.get_item(Key={'email': email})
+        user = res.get('Item')
+        if not user:
+            return {'error': 'ユーザーが見つかりません'}
+        # 機密情報除去
+        basic = {
+            'email': user.get('email'),
+            'name': user.get('name'),
+            'profile': user.get('profile') or {},
+            'created_at': user.get('created_at'),
+            'updated_at': user.get('updated_at'),
+        }
+        return {'status': 'ok', 'user': basic}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def handle_user_me_put(event: Dict[str, Any]) -> Dict[str, Any]:
+    email = _get_authorized_email(event)
+    if not email:
+        return {'error': '未認証です'}
+    data = _get_json_body(event)
+    # 更新可能なフィールド
+    name = data.get('name')
+    profile_updates = data.get('profile') if isinstance(data.get('profile'), dict) else None
+    if name is None and profile_updates is None:
+        return {'error': '更新フィールドがありません'}
+    table = _get_users_table()
+    try:
+        update_expr = []
+        expr_vals = {':u': datetime.utcnow().isoformat()}
+        expr_names = {}
+        if name is not None:
+            update_expr.append('#n = :n')
+            expr_vals[':n'] = name
+            expr_names['#n'] = 'name'
+        if profile_updates is not None:
+            # 既存profileにマージ（上書き）
+            # DynamoDBのUpdateExpressionだけでネストマージは難しいため、まず現状を取得してマージしてから全体をSET
+            cur = table.get_item(Key={'email': email}).get('Item') or {}
+            merged_profile = {**(cur.get('profile') or {}), **profile_updates}
+            update_expr.append('#p = :p')
+            expr_vals[':p'] = merged_profile
+            expr_names['#p'] = 'profile'
+        update_expr.append('updated_at = :u')
+        update_str = 'SET ' + ', '.join(update_expr)
+        res = table.update_item(
+            Key={'email': email},
+            UpdateExpression=update_str,
+            ExpressionAttributeValues=expr_vals,
+            ExpressionAttributeNames=expr_names if expr_names else None,
+            ReturnValues='ALL_NEW'
+        )
+        attrs = res.get('Attributes') or {}
+        basic = {
+            'email': attrs.get('email'),
+            'name': attrs.get('name'),
+            'profile': attrs.get('profile') or {},
+            'created_at': attrs.get('created_at'),
+            'updated_at': attrs.get('updated_at'),
+        }
+        return {'status': 'ok', 'user': basic}
+    except Exception as e:
+        return {'error': str(e)}
 
 # RSSフィードソース設定
 RSS_SOURCES = [
@@ -582,8 +806,8 @@ def lambda_handler(event, context):
         headers = {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type'
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
         }
 
         # OPTIONSリクエスト（CORS プリフライト）への対応
@@ -612,7 +836,15 @@ def lambda_handler(event, context):
             }
 
         # リソースごとの処理
-        if '/search' in resource:
+        if '/auth/register' in resource and method == 'POST':
+            result = handle_auth_register(event)
+        elif '/auth/login' in resource and method == 'POST':
+            result = handle_auth_login(event)
+        elif '/user/me' in resource and method == 'GET':
+            result = handle_user_me_get(event)
+        elif '/user/me' in resource and method == 'PUT':
+            result = handle_user_me_put(event)
+        elif '/search' in resource:
             query = query_parameters.get('q', '')
             if not query:
                 return {
