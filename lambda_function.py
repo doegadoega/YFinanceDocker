@@ -294,6 +294,12 @@ MAJOR_STOCKS = [
     'WMT', 'DIS', 'NFLX', 'ADBE', 'CRM', 'TMO', 'ACN', 'LLY', 'COST', 'NKE'
 ]
 
+# 低レイテンシ用の軽量銘柄リスト（fastモード時に使用）
+MAJOR_STOCKS_LITE = [
+    'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'GOOGL',
+    'TSLA', 'AVGO', 'JPM', 'UNH', 'V', 'HD', 'PG', 'BAC', 'PEP'
+]
+
 # セクターETF（改善版）
 SECTOR_ETFS = {
     'Technology': 'XLK',
@@ -940,7 +946,7 @@ def lambda_handler(event, context):
                 'isBase64Encoded': True
             }
         elif '/home' in resource:
-            result = get_stock_home_api()
+            result = get_stock_home_api(query_parameters)
         elif '/news/rss' in resource:
             result = lamuda_get_rss_news_api(query_parameters)
         elif '/rankings/stocks' in resource:
@@ -1711,91 +1717,149 @@ def get_stock_sustainability_api(ticker):
     except Exception as e:
         return {'error': f'ESG情報取得エラー: {str(e)}'}
 
-def get_stock_home_api():
-    """ホーム画面用情報取得API - 各エンドポイントの処理を並行実行で統合"""
+def get_stock_home_api(query_parameters=None):
+    """ホーム画面用情報取得API（軽量化対応）
+    - 並行実行
+    - セクション選択（?sections=news,stocks,sectors,...）
+    - 件数/市場/タイムアウト調整（?limit=5&market=sp500&timeout=10）
+    - 簡易TTLキャッシュ（?cache_ttl=60）
+    """
     import concurrent.futures
     import time
 
     try:
+        # パラメータ
+        params = dict(query_parameters or {})
+        sections_param = str(params.get('sections', '') or '').strip()
+        selected_sections = [s.strip().lower() for s in sections_param.split(',') if s.strip()] if sections_param else []
+        # ランキング等の件数は最大10件に制限
+        limit = max(1, min(int(str(params.get('limit', '5')) or '5'), 10))
+        market = str(params.get('market', 'sp500') or 'sp500').lower()
+        # HomeAPIは1リクエスト5秒までを強制（既定5、上限5）
+        timeout_sec = max(1, min(int(str(params.get('timeout', '5')) or '5'), 5))
+        cache_ttl = max(0, min(int(str(params.get('cache_ttl', '60')) or '60'), 600))
+        parallel_param = str(params.get('parallel', '1') or '1').lower()
+        is_parallel = not (parallel_param in ('0', 'false', 'no'))
+        fast_param = str(params.get('fast', '') or '').lower()
+        force_fast = fast_param in ('1', 'true', 'yes')
+
+        # キャッシュ
+        global _HOME_CACHE  # type: ignore
+        if '_HOME_CACHE' not in globals():
+            _HOME_CACHE = {}
+        cache_key_sections = tuple(sorted(selected_sections)) if selected_sections else ('all',)
+        # fastモードやtimeoutもキャッシュキーに含める
+        cache_key = ('v3', cache_key_sections, limit, market, timeout_sec, force_fast)
+        now = time.time()
+        cached = _HOME_CACHE.get(cache_key) if cache_ttl > 0 else None
+        if cached and (now - cached.get('ts', 0) < cache_ttl):
+            result = dict(cached.get('data', {}))
+            result['execution_info'] = get_execution_info('LAMBDA')
+            result['execution_info']['cache'] = f"hit({int(now - cached['ts'])}s)"
+            result['timestamp'] = datetime.now().isoformat()
+            return result
+
         result = {}
         start_time = time.time()
 
-        # 並行処理用のヘルパー関数
+        # fastモード条件: 明示指定 or timeout<=3秒
+        is_fast_mode = force_fast or (timeout_sec <= 3)
+
+        # タスク
         def fetch_news():
             try:
-                news_params = {'limit': '10', 'sort': 'published_desc'}
+                news_params = {'limit': str(limit), 'sort': 'published_desc'}
                 return ('news_rss', lamuda_get_rss_news_api(news_params))
             except Exception as e:
                 return ('news_rss', {'error': f'ニュース取得エラー: {str(e)}'})
 
         def fetch_gainers():
             try:
-                rankings_params = {'type': 'gainers', 'limit': '10', 'market': 'sp500'}
+                rankings_params = {'type': 'gainers', 'limit': str(limit), 'market': market, 'fast': '1' if is_fast_mode else '0', 'nochart': '1'}
                 return ('gainers', get_stock_rankings_api(rankings_params))
             except Exception as e:
                 return ('gainers', {'error': f'上昇株取得エラー: {str(e)}'})
 
         def fetch_losers():
             try:
-                rankings_params = {'type': 'losers', 'limit': '10', 'market': 'sp500'}
+                rankings_params = {'type': 'losers', 'limit': str(limit), 'market': market, 'fast': '1' if is_fast_mode else '0', 'nochart': '1'}
                 return ('losers', get_stock_rankings_api(rankings_params))
             except Exception as e:
                 return ('losers', {'error': f'下落株取得エラー: {str(e)}'})
 
         def fetch_sectors():
             try:
-                sector_rankings_params = {'limit': '10'}
+                sector_rankings_params = {'limit': str(limit)}
                 return ('rankings_sectors', get_sector_rankings_api(sector_rankings_params))
             except Exception as e:
                 return ('rankings_sectors', {'error': f'セクターランキング取得エラー: {str(e)}'})
 
         def fetch_indices():
             try:
-                indices_params = {}
-                return ('markets_indices', get_markets_indices_api(indices_params))
+                return ('markets_indices', get_markets_indices_api({}))
             except Exception as e:
                 return ('markets_indices', {'error': f'主要指数取得エラー: {str(e)}'})
 
         def fetch_currencies():
             try:
-                currency_params = {}
-                return ('markets_currencies', get_markets_currencies_api(currency_params))
+                return ('markets_currencies', get_markets_currencies_api({}))
             except Exception as e:
                 return ('markets_currencies', {'error': f'為替レート取得エラー: {str(e)}'})
 
         def fetch_commodities():
             try:
-                commodity_params = {}
-                return ('markets_commodities', get_markets_commodities_api(commodity_params))
+                return ('markets_commodities', get_markets_commodities_api({}))
             except Exception as e:
                 return ('markets_commodities', {'error': f'商品価格取得エラー: {str(e)}'})
 
         def fetch_status():
             try:
-                status_params = {}
-                return ('markets_status', get_markets_status_api(status_params))
+                return ('markets_status', get_markets_status_api({}))
             except Exception as e:
                 return ('markets_status', {'error': f'市場状況取得エラー: {str(e)}'})
 
-        # 並行処理で全ての API を実行（タイムアウト設定）
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            # 全てのタスクを並行実行
-            future_to_name = {
-                executor.submit(fetch_news): 'news',
-                executor.submit(fetch_gainers): 'gainers',
-                executor.submit(fetch_losers): 'losers',
-                executor.submit(fetch_sectors): 'sectors',
-                executor.submit(fetch_indices): 'indices',
-                executor.submit(fetch_currencies): 'currencies',
-                executor.submit(fetch_commodities): 'commodities',
-                executor.submit(fetch_status): 'status'
-            }
+        # セクション選択
+        all_sections = ['news', 'stocks', 'indices', 'currencies', 'status']
+        sections = selected_sections or all_sections
 
-            gainers_result = None
-            losers_result = None
+        task_funcs = []
+        endpoints = []
+        if 'news' in sections:
+            task_funcs.append(fetch_news)
+            endpoints.append('news/rss')
+        if 'stocks' in sections or 'rankings_stocks' in sections:
+            task_funcs.append(fetch_gainers)
+            task_funcs.append(fetch_losers)
+            endpoints.append('rankings/stocks')
+        if 'sectors' in sections:
+            task_funcs.append(fetch_sectors)
+            endpoints.append('rankings/sectors')
+        if 'indices' in sections:
+            task_funcs.append(fetch_indices)
+            endpoints.append('markets/indices')
+        if 'currencies' in sections:
+            task_funcs.append(fetch_currencies)
+            endpoints.append('markets/currencies')
+        if 'commodities' in sections:
+            task_funcs.append(fetch_commodities)
+            endpoints.append('markets/commodities')
+        if 'status' in sections:
+            task_funcs.append(fetch_status)
+            endpoints.append('markets/status')
 
-            # 結果を収集（30秒でタイムアウト）
-            for future in concurrent.futures.as_completed(future_to_name, timeout=30):
+        # 並列実行は常時10ワーカー（要求仕様）
+        max_workers = (1 if not is_parallel else 10)
+
+        gainers_result = None
+        losers_result = None
+
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        try:
+            future_to_func = {executor.submit(fn): fn for fn in task_funcs}
+            done, not_done = concurrent.futures.wait(set(future_to_func.keys()), timeout=timeout_sec, return_when=concurrent.futures.ALL_COMPLETED)
+
+            # 完了分を収集
+            for future in done:
                 try:
                     key, data = future.result()
                     if key == 'gainers':
@@ -1805,41 +1869,66 @@ def get_stock_home_api():
                     elif key in ['news_rss', 'rankings_sectors', 'markets_indices', 'markets_currencies', 'markets_commodities', 'markets_status']:
                         result[key] = data
                 except Exception as e:
-                    # 個別のタスクが失敗した場合
-                    task_name = future_to_name[future]
-                    result[f'{task_name}_error'] = f'{task_name}取得エラー: {str(e)}'
+                    fn = future_to_func[future]
+                    fn_name = fn.__name__
+                    result[f'{fn_name}_error'] = f'{fn_name}取得エラー: {str(e)}'
 
-            # rankings_stocks を組み立て
-            if gainers_result and losers_result:
-                result['rankings_stocks'] = {
-                    'gainers': gainers_result,
-                    'losers': losers_result
+            # タイムアウト分に空構造を付与（ブランク）し、未完了ジョブは非待機シャットダウン
+            if not_done:
+                task_to_label = {
+                    fetch_news: 'news_rss',
+                    fetch_gainers: 'gainers',
+                    fetch_losers: 'losers',
+                    fetch_sectors: 'rankings_sectors',
+                    fetch_indices: 'markets_indices',
+                    fetch_currencies: 'markets_currencies',
+                    fetch_commodities: 'markets_commodities',
+                    fetch_status: 'markets_status',
                 }
-            else:
+                for future in not_done:
+                    fn = future_to_func[future]
+                    label = task_to_label.get(fn, fn.__name__)
+                    try:
+                        future.cancel()
+                    except Exception:
+                        pass
+                    if label == 'gainers':
+                        gainers_result = gainers_result or {}
+                    elif label == 'losers':
+                        losers_result = losers_result or {}
+                    else:
+                        result[label] = {}
+        finally:
+            # 非待機でスレッドを終了。未完了ジョブはバックグラウンドで破棄される
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                # Python <3.9 互換
+                executor.shutdown(wait=False)
+
+        if ('stocks' in sections or 'rankings_stocks' in sections):
+            if gainers_result is not None or losers_result is not None:
                 result['rankings_stocks'] = {
-                    'gainers': gainers_result or {'error': '上昇株データ取得失敗'},
-                    'losers': losers_result or {'error': '下落株データ取得失敗'}
+                    'gainers': gainers_result or {},
+                    'losers': losers_result or {}
                 }
 
-        # メタ情報
         end_time = time.time()
         result['execution_info'] = get_execution_info('LAMBDA')
-        result['execution_info']['parallel_execution_time'] = f"{end_time - start_time:.2f}秒"
+        # 端数の四捨五入で3.00秒狙いの時に3.01になるのを避ける
+        exec_ms = int((end_time - start_time) * 1000)
+        result['execution_info']['parallel_execution_time'] = f"{exec_ms/1000:.2f}秒"
+        result['execution_info']['fast_mode'] = is_fast_mode
         result['timestamp'] = datetime.now().isoformat()
-        result['endpoints_integrated'] = [
-            'news/rss',
-            'rankings/stocks',
-            'rankings/sectors',
-            'markets/indices',
-            'markets/currencies',
-            'markets/commodities',
-            'markets/status'
-        ]
+        result['endpoints_integrated'] = endpoints
+
+        if cache_ttl > 0:
+            _HOME_CACHE[cache_key] = {'ts': now, 'data': result}
 
         return result
 
     except concurrent.futures.TimeoutError:
-        return {'error': 'ホーム情報取得がタイムアウトしました（30秒）'}
+        return {'error': f'ホーム情報取得がタイムアウトしました（{timeout_sec}秒）'}
     except Exception as e:
         return {'error': f'ホーム情報取得エラー: {str(e)}'}
 
@@ -2300,17 +2389,41 @@ def generate_swagger_ui_html(event=None, context=None):
             "/home": {
                 "get": {
                     "summary": "ホーム画面情報取得",
-                    "description": "株価指数、主要ETF、セクター情報などのホーム画面用情報を取得します",
-                    "parameters": [],
-                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"indices": {"type": "object"}, "etfs": {"type": "object"}, "sectors": {"type": "object"}, "execution_info": {"type": "object"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
+                    "description": "ニュース、株価ランキング、セクター、指数、為替、商品、市場状況の統合情報を並列で取得します。fast/timeout指定により3秒以内返却を優先できます。",
+                    "parameters": [
+                        {"name": "sections", "in": "query", "required": False, "description": "取得対象セクション（カンマ区切り）。例: news,stocks,sectors,indices,currencies,commodities,status", "schema": {"type": "string"}},
+                        {"name": "limit", "in": "query", "required": False, "description": "ランキングやニュースの件数（デフォルト: 5, 最大: 10）", "schema": {"type": "integer", "default": 5, "maximum": 10}},
+                        {"name": "market", "in": "query", "required": False, "description": "ランキング市場（sp500 | nasdaq100）", "schema": {"type": "string", "enum": ["sp500", "nasdaq100"], "default": "sp500"}},
+                        {"name": "timeout", "in": "query", "required": False, "description": "全体タイムアウト秒（デフォルト: 5、上限: 5）", "schema": {"type": "integer", "default": 5, "minimum": 1, "maximum": 5}},
+                        {"name": "cache_ttl", "in": "query", "required": False, "description": "ホーム応答のTTLキャッシュ秒（デフォルト: 60）", "schema": {"type": "integer", "default": 60, "minimum": 0, "maximum": 600}},
+                        {"name": "parallel", "in": "query", "required": False, "description": "並列実行フラグ（0/1, true/false）", "schema": {"type": "string", "default": "1"}},
+                        {"name": "fast", "in": "query", "required": False, "description": "高速モード（1で軽量ランキング+画像スキップ）。timeout<=3でも自動有効", "schema": {"type": "string", "enum": ["0", "1", "true", "false"]}}
+                    ],
+                    "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {
+                        "news_rss": {"type": "object"},
+                        "rankings_stocks": {"type": "object"},
+                        "rankings_sectors": {"type": "object"},
+                        "markets_indices": {"type": "object"},
+                        "markets_currencies": {"type": "object"},
+                        "markets_commodities": {"type": "object"},
+                        "markets_status": {"type": "object"},
+                        "endpoints_integrated": {"type": "array", "items": {"type": "string"}},
+                        "execution_info": {"type": "object", "properties": {"parallel_execution_time": {"type": "string"}, "fast_mode": {"type": "boolean"}}},
+                        "timestamp": {"type": "string", "format": "date-time"}
+                    }}}}}}
                 }
             },
             "/news/rss": {
                 "get": {
-                    "summary": "Yahoo Finance RSSニュース取得",
-                    "description": "Yahoo FinanceのRSSフィードから最新ニュースを取得します",
+                    "summary": "金融ニュースRSS取得",
+                    "description": "Yahoo Finance / MarketWatch などのRSSから最新ニュースを取得します（重複除去・並べ替え対応）",
                     "parameters": [
-                        {"name": "limit", "in": "query", "required": False, "description": "取得件数（デフォルト10）", "schema": {"type": "integer", "default": 10}}
+                        {"name": "limit", "in": "query", "required": False, "description": "取得件数（デフォルト10、最大200）", "schema": {"type": "integer", "default": 10, "maximum": 200}},
+                        {"name": "sort", "in": "query", "required": False, "description": "並び順（published_desc | published_asc | title_asc）", "schema": {"type": "string", "enum": ["published_desc", "published_asc", "title_asc"], "default": "published_desc"}},
+                        {"name": "category", "in": "query", "required": False, "description": "カテゴリー（all | general | market）", "schema": {"type": "string", "enum": ["all", "general", "market"], "default": "all"}},
+                        {"name": "source", "in": "query", "required": False, "description": "ソース名フィルタ（部分一致）", "schema": {"type": "string"}},
+                        {"name": "timeout", "in": "query", "required": False, "description": "各RSS取得のタイムアウト秒（デフォルト5）", "schema": {"type": "integer", "default": 5, "minimum": 1, "maximum": 20}},
+                        {"name": "cache_ttl", "in": "query", "required": False, "description": "ニュース結果のTTLキャッシュ秒（デフォルト30）", "schema": {"type": "integer", "default": 30, "minimum": 0, "maximum": 600}}
                     ],
                     "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"type": "object", "properties": {"status": {"type": "string"}, "data": {"type": "array"}, "count": {"type": "integer"}, "timestamp": {"type": "string", "format": "date-time"}}}}}}}
                 }
@@ -2322,7 +2435,10 @@ def generate_swagger_ui_html(event=None, context=None):
                     "parameters": [
                         {"name": "type", "in": "query", "required": True, "description": "ランキング種別（例: gainers, losers, volume, market-cap）", "schema": {"type": "string", "enum": ["gainers", "losers", "volume", "market-cap"]}},
                         {"name": "market", "in": "query", "required": True, "description": "市場（例: sp500, nasdaq100）", "schema": {"type": "string", "enum": ["sp500", "nasdaq100"]}},
-                        {"name": "limit", "in": "query", "required": False, "description": "取得件数（デフォルト: 10、最大: 50）", "schema": {"type": "integer", "default": 10, "maximum": 50}}
+                        {"name": "limit", "in": "query", "required": False, "description": "取得件数（デフォルト: 10、最大: 50）", "schema": {"type": "integer", "default": 10, "maximum": 50}},
+                        {"name": "fast", "in": "query", "required": False, "description": "高速モード（軽量銘柄セットで取得）", "schema": {"type": "string", "enum": ["0", "1", "true", "false"]}},
+                        {"name": "nochart", "in": "query", "required": False, "description": "チャート画像を含めない（1で除外）", "schema": {"type": "string", "enum": ["0", "1", "true", "false"]}},
+                        {"name": "cache_ttl", "in": "query", "required": False, "description": "ランキング結果のTTLキャッシュ秒（デフォルト30）", "schema": {"type": "integer", "default": 30, "minimum": 0, "maximum": 600}}
                     ],
                     "responses": {
                         "200": {
@@ -3162,9 +3278,23 @@ def parse_published_date(entry):
             pass
     return published_date
 
-def fetch_rss_feed(source):
+def fetch_rss_feed(source, timeout_sec=None):
     try:
-        feed = feedparser.parse(source['url'])
+        # タイムアウト対応: requestsがあれば事前取得、なければfeedparser直呼び
+        content = None
+        if timeout_sec is not None and timeout_sec > 0:
+            try:
+                import requests  # lazy import
+                r = requests.get(source['url'], timeout=timeout_sec, headers={
+                    'User-Agent': 'Mozilla/5.0 (HomeAPI)'
+                })
+                if r.ok:
+                    content = r.content
+            except Exception:
+                # タイムアウトや接続エラーは静かにスキップ
+                return []
+
+        feed = feedparser.parse(content if content is not None else source['url'])
         articles = []
         for entry in feed.entries:
             title = clean_html(entry.get('title', ''))
@@ -3210,14 +3340,29 @@ def lamuda_get_rss_news_api(query_parameters):
     source_filter = query_parameters.get('source', '')
     limit = min(int(query_parameters.get('limit', 50)), 200)
     sort = query_parameters.get('sort', 'published_desc')
+    timeout_sec = max(1, min(int(str(query_parameters.get('timeout', '5')) or '5'), 20))
+    cache_ttl = max(0, min(int(str(query_parameters.get('cache_ttl', '30')) or '30'), 600))
     target_sources = RSS_SOURCES
     if category != 'all':
         target_sources = [s for s in target_sources if s['category'] == category]
     if source_filter:
         target_sources = [s for s in target_sources if source_filter.lower() in s['name'].lower()]
+    # ニュースキャッシュ
+    global _NEWS_CACHE  # type: ignore
+    if '_NEWS_CACHE' not in globals():
+        _NEWS_CACHE = {}
+    cache_key = ('news_v1', category, source_filter, limit, sort)
+    now_ts = datetime.now().timestamp()
+    cached = _NEWS_CACHE.get(cache_key) if cache_ttl > 0 else None
+    if cached and (now_ts - cached.get('ts', 0) < cache_ttl):
+        data = dict(cached['data'])
+        data['metadata'] = dict(data.get('metadata', {}))
+        data['metadata']['cache'] = 'hit'
+        return data
+
     all_articles = []
     for source in target_sources:
-        all_articles.extend(fetch_rss_feed(source))
+        all_articles.extend(fetch_rss_feed(source, timeout_sec=timeout_sec))
     unique_articles = {}
     for article in all_articles:
         title_key = article['title'].lower().strip()
@@ -3250,7 +3395,7 @@ def lamuda_get_rss_news_api(query_parameters):
     except Exception:
         pass
     final_articles = final_articles[:limit]
-    return {
+    result = {
         'status': 'success',
         'data': final_articles,
         'metadata': {
@@ -3265,15 +3410,37 @@ def lamuda_get_rss_news_api(query_parameters):
         'timestamp': datetime.now().isoformat()
     }
 
+    if cache_ttl > 0:
+        _NEWS_CACHE[cache_key] = {'ts': now_ts, 'data': result}
+    return result
+
 def get_stock_rankings_api(query_parameters):
     """株価関連ランキング取得API（改善版）"""
     try:
         ranking_type = query_parameters.get('type', 'gainers')
-        limit = min(int(query_parameters.get('limit', 10)), 50)
+        limit = min(int(query_parameters.get('limit', 10)), 10)
         market = query_parameters.get('market', 'us')
+        is_fast = str(query_parameters.get('fast', '0')).lower() in ('1', 'true', 'yes')
+        no_chart = str(query_parameters.get('nochart', '0')).lower() in ('1', 'true', 'yes')
+        cache_ttl = int(str(query_parameters.get('cache_ttl', '30')) or '30')
 
-        # 主要銘柄から取得
-        stocks = get_multiple_stock_data(MAJOR_STOCKS)
+        # キャッシュ（ランクのみ）
+        global _RANKINGS_CACHE  # type: ignore
+        if '_RANKINGS_CACHE' not in globals():
+            _RANKINGS_CACHE = {}
+
+        cache_key = ('r_v1', ranking_type, market, limit, is_fast)
+        cache_now = datetime.now().timestamp()
+        cached = _RANKINGS_CACHE.get(cache_key)
+        if cached and (cache_now - cached.get('ts', 0) < cache_ttl):
+            cached_data = dict(cached['data'])
+            if no_chart:
+                cached_data.pop('chart_image', None)
+            cached_data['cache'] = 'hit'
+            return cached_data
+
+        # 主要銘柄から取得（fastモードは軽量セット）
+        stocks = get_multiple_stock_data(MAJOR_STOCKS_LITE if is_fast else MAJOR_STOCKS)
 
         if ranking_type == 'gainers':
             # 上昇銘柄のみフィルタ
@@ -3301,10 +3468,10 @@ def get_stock_rankings_api(query_parameters):
         for i, stock in enumerate(rankings):
             stock['rank'] = i + 1
 
-        # 画像生成
-        chart_image = generate_ranking_chart(rankings, ranking_type)
+        # 画像生成（no_chart指定時はスキップ）
+        chart_image = None if no_chart else generate_ranking_chart(rankings, ranking_type)
 
-        return {
+        result = {
             'status': 'success',
             'type': ranking_type,
             'market': market,
@@ -3318,13 +3485,22 @@ def get_stock_rankings_api(query_parameters):
             'timestamp': datetime.now().isoformat()
         }
 
+        # キャッシュ保存
+        _RANKINGS_CACHE[cache_key] = {'ts': cache_now, 'data': result}
+        if no_chart:
+            # 呼び出し元に合わせて画像なしで返す
+            result_no_img = dict(result)
+            result_no_img.pop('chart_image', None)
+            return result_no_img
+        return result
+
     except Exception as e:
         return {'error': f'ランキング取得エラー: {str(e)}'}
 
 def get_sector_rankings_api(query_parameters):
     """セクター・業界ランキング取得API（改善版）"""
     try:
-        limit = min(int(query_parameters.get('limit', 10)), 20)
+        limit = min(int(query_parameters.get('limit', 10)), 10)
 
         sector_data = []
 
@@ -3381,7 +3557,7 @@ def get_sector_rankings_api(query_parameters):
 def get_crypto_rankings_api(query_parameters):
     """暗号通貨ランキング取得API"""
     try:
-        limit = min(int(query_parameters.get('limit', 10)), 20)
+        limit = min(int(query_parameters.get('limit', 10)), 10)
         sort_by = query_parameters.get('sort', 'change')  # change, price, volume, market_cap
 
         crypto_data = []

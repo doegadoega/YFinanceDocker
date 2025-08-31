@@ -1,0 +1,384 @@
+openapi: 3.0.0
+servers:
+  # Added by API Auto Mocking Plugin
+  - description: SwaggerHub API Auto Mocking
+    url: https://virtserver.swaggerhub.com/nttdocomobusiness/PocSecuritiesApp/1.0.0
+info:
+  description: "Securities App for Poc"
+  version: t
+  title: Securities API
+  license:
+    name: Apache 2.0
+    url: 'http://www.apache.org/licenses/LICENSE-2.0.html'
+tags:
+  - name: admins
+    description: Secured Admin-only calls
+  - name: developers
+    description: Operations available to regular developers
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        jwt:
+          type: string
+
+    BaseInfo:
+      type: object
+      properties:
+        first_name:
+          type: string
+        family_name:
+          type: string
+  first_name_kana:
+          type: string
+        family_name_kana:
+          type: string
+  email:
+    type: string
+  password:
+    type: string
+  phone_number:
+    type: string
+
+    SecuritiesInfo:
+      type: object
+      properties:
+        buying_power:
+          type: number
+
+    Holding:
+      type: object
+      properties:
+        symbol:
+          type: string
+        quantity:
+          type: integer
+
+    Favorite:
+      type: object
+      properties:
+        symbol:
+          type: string
+
+    Transaction:
+      type: object
+      properties:
+        symbol:
+          type: string
+        price:
+          type: number
+        quantity:
+          type: integer
+        type:
+          type: string
+          enum: ["BUY", "SELL"]
+        timestamp:
+          type: string
+          format: date-time
+
+    Symbol:
+      type: object
+      properties:
+        symbol: { type: string }
+        name: { type: string }
+        market: { type: string }
+        industry: { type: string }
+        current_price: { type: number }
+        updated_at: { type: string, format: date-time }
+
+    # 追加: ユーザ削除リクエスト（POST /user/base 用）
+    DeleteUserRequest:
+      type: object
+      required:
+        - confirm
+      properties:
+        confirm:
+          type: boolean
+          description: "true のときのみ削除を実行（誤操作防止）"
+        reason:
+          type: string
+          description: "任意の削除理由"
+
+    # 追加: 取引登録用のリクエスト（POST /user/transactions）
+    OrderRequest:
+      type: object
+      required:
+        - symbol
+        - quantity
+        - side
+      properties:
+        symbol:
+          type: string
+        price:
+          type: number
+          description: "指値価格（成行の場合は省略可）"
+        quantity:
+          type: integer
+        side:
+          type: string
+          enum: ["BUY", "SELL"]
+          description: "買付（BUY）/ 売却（SELL）を明示"
+        order_type:
+          type: string
+          enum: ["MARKET", "LIMIT"]
+          default: "LIMIT"
+          description: "成行/指値の別（既定は指値）"
+
+paths:
+  /user/login:
+    post:
+      summary: ログインしてAccess Tokenを取得
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        200:
+          description: Access Tokenを返却
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                  expires_in:
+                    type: integer
+  /user/register:
+    post:
+      summary: "ユーザー新規登録"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - password
+              properties:
+                user_id:
+                  type: string
+                password:
+                  type: string
+      responses:
+        201:
+          description: ユーザ作成成功
+        400:
+          description: 入力エラー(ID重複など)
+
+  /user/base:
+    get:
+      summary: ユーザ基本情報取得
+      security: [ { bearerAuth: [] } ]
+      responses:
+        200:
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BaseInfo' }
+
+    put:
+      summary: ユーザ基本情報更新
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BaseInfo' }
+      responses:
+        204:
+          description: 更新成功
+
+    # 追加: POST でユーザ削除（ご指定に合わせた非REST的エンドポイント）
+    post:
+      summary: ユーザ削除（POST）
+      description: "ご指定に合わせ、POST でユーザ削除を実行します。REST 準拠の DELETE 版が必要な場合は別途追加可能です。"
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeleteUserRequest' }
+      responses:
+        202:
+          description: 削除受付（非同期で削除を行う想定）
+
+  /user/securities:
+    get:
+      summary: 買付余力の取得
+      security: [ { bearerAuth: [] } ]
+      responses:
+        200:
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SecuritiesInfo' }
+
+    # 追加: 買付余力の新規作成/付与
+    post:
+      summary: 買付余力の新規作成/付与
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SecuritiesInfo' }
+      responses:
+        201:
+          description: 作成・付与成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SecuritiesInfo' }
+
+    # 追加: 買付余力の更新
+    put:
+      summary: 買付余力の更新
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SecuritiesInfo' }
+      responses:
+        200:
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SecuritiesInfo' }
+
+    # 追加: 買付余力の削除（リセット）
+    delete:
+      summary: 買付余力の削除
+      description: "ユーザの買付余力をリセット/削除します。"
+      security: [ { bearerAuth: [] } ]
+      responses:
+        204:
+          description: 削除成功
+
+  /user/holdings:
+    get:
+      summary: 保有銘柄一覧取得
+      security: [ { bearerAuth: [] } ]
+      responses:
+        200:
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Holding' }
+
+  /user/favorites:
+    get:
+      summary: お気に入り銘柄一覧取得
+      security: [ { bearerAuth: [] } ]
+      responses:
+        200:
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Favorite' }
+
+    post:
+      summary: お気に入り銘柄追加
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Favorite' }
+      responses:
+        201:
+          description: 追加成功
+
+  /user/favorites/{symbol}:
+    delete:
+      summary: お気に入り銘柄削除
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          description: 削除する銘柄コード
+          schema:
+            type: string
+      responses:
+        204:
+          description: 削除成功
+
+  /user/transactions:
+    get:
+      summary: 取引履歴取得
+      security: [ { bearerAuth: [] } ]
+      responses:
+        200:
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Transaction' }
+
+    post:
+      summary: 株式売買（BUY/SELL）
+      description: "買付・売却を明示する 'side' を追加したリクエスト形式。"
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderRequest' }
+      responses:
+        201:
+          description: 登録成功
+
+    # 追加: 取引履歴の全削除
+    delete:
+      summary: 取引履歴の全削除
+      security: [ { bearerAuth: [] } ]
+      responses:
+        204:
+          description: 削除成功
+
+  /symbols:
+    get:
+      summary: 銘柄一覧取得
+      responses:
+        200:
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Symbol' }
+
+  /symbols/{symbol}:
+    get:

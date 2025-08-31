@@ -75,7 +75,7 @@ sam deploy \
     --s3-bucket $BUCKET_NAME \
     --capabilities CAPABILITY_IAM \
     --region $REGION \
-    --confirm-changeset \
+    --no-confirm-changeset \
     --no-fail-on-empty-changeset \
     --resolve-image-repos
 
@@ -99,22 +99,22 @@ FUNCTION_NAME=$(aws cloudformation describe-stacks \
 
 if [ ! -z "$FUNCTION_NAME" ] && [ "$FUNCTION_NAME" != "None" ]; then
     echo "Lambda関数名: $FUNCTION_NAME"
-    
+
     # 現在の環境変数を取得
     CURRENT_ENV=$(aws lambda get-function-configuration --function-name $FUNCTION_NAME --region $REGION --query 'Environment.Variables' --output json 2>/dev/null || echo '{}')
-    
+
     # 新しい環境変数を設定
     NEW_ENV=$(jq -nc --arg url "$API_URL" '
       {"PYTHONPATH":"/opt/python","API_GATEWAY_URL":$url}')
-    
+
     echo "設定する環境変数: $NEW_ENV"
-    
+
     # Lambda関数を更新（環境変数のJSON形式を修正）
     aws lambda update-function-configuration \
         --function-name "$FUNCTION_NAME" \
         --region "$REGION" \
         --environment "Variables={PYTHONPATH=/opt/python,API_GATEWAY_URL=$API_URL}"
-    
+
     echo "✅ 環境変数の更新が完了しました。"
     echo "   API_GATEWAY_URL: $API_URL"
 else

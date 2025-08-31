@@ -223,6 +223,25 @@ Resources:
       DockerContext: .
       DockerTag: latest
 
+  # 独立した 認証/証券 管理用 API（YFinance とは別）
+  AuthSecuritiesApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      Auth:
+        Authorizers:
+          UserJwtAuthorizer:
+            FunctionArn: !GetAtt AuthAuthorizer.Arn
+            FunctionPayloadType: TOKEN
+            AuthorizerResultTtlInSeconds: 0
+            Identity:
+              Header: Authorization
+              ReauthorizeEvery: 0
+
   # Lambda オーソライザー（JWT検証）
   AuthAuthorizer:
     Type: AWS::Serverless::Function
@@ -242,6 +261,174 @@ Resources:
       Dockerfile: Dockerfile
       DockerContext: .
       DockerTag: latest
+
+  # 独立API用 Lambda 関数（auth_api.yaml に準拠）
+  SecuritiesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      MemorySize: 512
+      Timeout: 60
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          USERS_TABLE: !Ref UsersTable
+          JWT_SECRET: ""
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+      Events:
+        # 公開（認証不要）
+        UserLogin:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/login
+            Method: post
+        UserRegister:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/register
+            Method: post
+        SymbolsGet:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /symbols
+            Method: get
+        SymbolGet:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /symbols/{symbol}
+            Method: get
+
+        # 認証必須
+        UserBaseGet:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/base
+            Method: get
+            Auth:
+              Authorizer: UserJwtAuthorizer
+        UserBasePut:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/base
+            Method: put
+            Auth:
+              Authorizer: UserJwtAuthorizer
+        UserBaseDeleteViaPost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/base
+            Method: post
+            Auth:
+              Authorizer: UserJwtAuthorizer
+
+        UserSecuritiesGet:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/securities
+            Method: get
+            Auth:
+              Authorizer: UserJwtAuthorizer
+        UserSecuritiesPost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/securities
+            Method: post
+            Auth:
+              Authorizer: UserJwtAuthorizer
+        UserSecuritiesPut:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/securities
+            Method: put
+            Auth:
+              Authorizer: UserJwtAuthorizer
+        UserSecuritiesDelete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/securities
+            Method: delete
+            Auth:
+              Authorizer: UserJwtAuthorizer
+
+        UserHoldingsGet:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/holdings
+            Method: get
+            Auth:
+              Authorizer: UserJwtAuthorizer
+
+        UserFavoritesGet:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/favorites
+            Method: get
+            Auth:
+              Authorizer: UserJwtAuthorizer
+        UserFavoritesPost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/favorites
+            Method: post
+            Auth:
+              Authorizer: UserJwtAuthorizer
+        UserFavoritesDelete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/favorites/{symbol}
+            Method: delete
+            Auth:
+              Authorizer: UserJwtAuthorizer
+
+        UserTransactionsGet:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/transactions
+            Method: get
+            Auth:
+              Authorizer: UserJwtAuthorizer
+        UserTransactionsPost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/transactions
+            Method: post
+            Auth:
+              Authorizer: UserJwtAuthorizer
+        UserTransactionsDelete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthSecuritiesApi
+            Path: /user/transactions
+            Method: delete
+            Auth:
+              Authorizer: UserJwtAuthorizer
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: .
+      DockerTag: latest
+    ImageConfig:
+      Command:
+        - securities_api.lambda_handler
 
   # DynamoDB ユーザーテーブル
   UsersTable:
@@ -280,3 +467,15 @@ Outputs:
     Value: !Ref AuthAuthorizer
     Export:
       Name: AuthAuthorizerFunctionName
+
+  AuthSecuritiesApiUrl:
+    Description: 'Auth/Securities API Gateway endpoint URL'
+    Value: !Sub 'https://${AuthSecuritiesApi}.execute-api.${AWS::Region}.amazonaws.com/prod/'
+    Export:
+      Name: AuthSecuritiesApiUrl
+
+  SecuritiesFunctionName:
+    Description: 'Securities Lambda Function Name'
+    Value: !Ref SecuritiesFunction
+    Export:
+      Name: SecuritiesFunctionName
